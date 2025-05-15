@@ -132,7 +132,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                 borderRadius: '12px',
                 border: `1px solid ${theme.border}`,
                 backgroundColor: 'white',
-                color: theme.text,
+                color: '#1A2151', // MODIFICATO: colore testo fisso
                 fontSize: '16px',
                 fontWeight: '600',
               }}
@@ -168,7 +168,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                 borderRadius: '12px',
                 border: `1px solid ${theme.border}`,
                 backgroundColor: 'white',
-                color: theme.text,
+                color: '#1A2151', // MODIFICATO: colore testo fisso
                 fontSize: '16px',
               }}
             >
@@ -210,7 +210,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                 borderRadius: '12px',
                 border: `1px solid ${theme.border}`,
                 backgroundColor: 'white',
-                color: theme.text,
+                color: '#1A2151', // MODIFICATO: colore testo fisso
                 fontSize: '16px',
               }}
             />
@@ -244,7 +244,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                 borderRadius: '12px',
                 border: `1px solid ${theme.border}`,
                 backgroundColor: 'white',
-                color: theme.text,
+                color: '#1A2151', // MODIFICATO: colore testo fisso
                 fontSize: '16px',
               }}
             />
