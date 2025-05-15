@@ -1,6 +1,7 @@
 import { useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppContext, AppProvider } from './context/AppContext';
+import LoadingScreen from './components/LoadingScreen';
 import './styles/globals.css';
 
 // Import di tutti i componenti
@@ -28,7 +29,12 @@ const pageTransition = {
 };
 
 const AppContent = () => {
-  const { currentView, theme } = useContext(AppContext);
+  const { currentView, theme, isLoading } = useContext(AppContext);
+
+  // Se i dati stanno ancora caricando, mostra la schermata di caricamento
+  if (isLoading) {
+    return <LoadingScreen theme={theme} />;
+  }
 
   // Funzione per renderizzare la vista corrente
   const renderView = () => {
