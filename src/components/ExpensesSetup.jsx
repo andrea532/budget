@@ -264,7 +264,7 @@ const ExpensesSetup = () => {
                         borderRadius: '12px',
                         border: `1px solid ${theme.border}`,
                         backgroundColor: 'white',
-                        color: theme.text,
+                        color: '#1A2151', // MODIFICATO: colore testo fisso
                         fontSize: '16px',
                         outline: 'none',
                       }}
@@ -312,7 +312,7 @@ const ExpensesSetup = () => {
                           borderRadius: '12px',
                           border: `1px solid ${theme.border}`,
                           backgroundColor: 'white',
-                          color: theme.text,
+                          color: '#1A2151', // MODIFICATO: colore testo fisso
                           fontSize: '16px',
                           outline: 'none',
                         }}
@@ -348,7 +348,7 @@ const ExpensesSetup = () => {
                         borderRadius: '12px',
                         border: `1px solid ${theme.border}`,
                         backgroundColor: 'white',
-                        color: theme.text,
+                        color: '#1A2151', // MODIFICATO: colore testo fisso
                         fontSize: '16px',
                         outline: 'none',
                       }}
