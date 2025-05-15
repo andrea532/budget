@@ -59,3 +59,19 @@ button {
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Assicura testo scuro su input con sfondo bianco, indipendentemente dal tema */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="tel"],
+input[type="email"],
+select,
+textarea {
+  color: #1A2151 !important;
+}
+
+/* Stile del placeholder */
+input::placeholder {
+  color: #A0A3BD !important;
+}
