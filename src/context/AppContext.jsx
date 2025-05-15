@@ -1,4 +1,22 @@
 import React, { useState, createContext, useEffect } from 'react';
+import {
+  initDB,
+  saveSettings,
+  getSettings,
+  getTransactions,
+  addTransaction as dbAddTransaction,
+  updateTransaction as dbUpdateTransaction,
+  deleteTransaction as dbDeleteTransaction,
+  getFixedExpenses,
+  addFixedExpense as dbAddFixedExpense,
+  deleteFixedExpense as dbDeleteFixedExpense,
+  getFutureExpenses,
+  addFutureExpense as dbAddFutureExpense,
+  updateFutureExpense as dbUpdateFutureExpense,
+  deleteFutureExpense as dbDeleteFutureExpense,
+  getSavingsHistory,
+  addSavingsEntry as dbAddSavingsEntry
+} from '../services/db';
 
 export const AppContext = createContext(null);
 
@@ -57,6 +75,7 @@ export const AppProvider = ({ children }) => {
     currency: 'EUR',
     language: 'it'
   });
+  const [isLoading, setIsLoading] = useState(true);
 
   // Tema
   const theme = {
@@ -70,6 +89,94 @@ export const AppProvider = ({ children }) => {
     textSecondary: userSettings.darkMode ? '#A0A3BD' : '#757F8C',
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
+
+  // Inizializzazione del database e caricamento dati
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Inizializza il database
+        await initDB();
+        
+        // Carica le impostazioni salvate
+        const settingsData = await getSettings();
+        if (settingsData && settingsData.length > 0) {
+          const settings = settingsData[0];
+          setUserSettings(settings.userSettings || userSettings);
+          setMonthlyIncome(settings.monthlyIncome || 0);
+          setLastPaydayDate(settings.lastPaydayDate || '');
+          setNextPaydayDate(settings.nextPaydayDate || '');
+          setSavingsPercentage(settings.savingsPercentage || 10);
+          setStreak(settings.streak || 0);
+          setAchievements(settings.achievements || []);
+        }
+        
+        // Carica le transazioni
+        const transactionsData = await getTransactions();
+        if (transactionsData) {
+          setTransactions(transactionsData);
+        }
+        
+        // Carica le spese fisse
+        const fixedExpensesData = await getFixedExpenses();
+        if (fixedExpensesData) {
+          setFixedExpenses(fixedExpensesData);
+        }
+        
+        // Carica le spese future
+        const futureExpensesData = await getFutureExpenses();
+        if (futureExpensesData) {
+          setFutureExpenses(futureExpensesData);
+        }
+        
+        // Carica la cronologia risparmi
+        const savingsData = await getSavingsHistory();
+        if (savingsData) {
+          setSavingsHistory(savingsData);
+          
+          // Calcola il totale dei risparmi
+          if (savingsData.length > 0) {
+            const lastSavingsEntry = savingsData[savingsData.length - 1];
+            setTotalSavings(lastSavingsEntry.total || 0);
+          }
+        }
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Errore nel caricamento dei dati:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+  
+  // Salva le impostazioni quando cambiano
+  useEffect(() => {
+    if (isLoading) return;
+    
+    const saveUserData = async () => {
+      try {
+        const settings = {
+          id: 1, // ID fisso per le impostazioni
+          userSettings,
+          monthlyIncome,
+          lastPaydayDate,
+          nextPaydayDate,
+          savingsPercentage,
+          streak,
+          achievements
+        };
+        
+        await saveSettings(settings);
+      } catch (error) {
+        console.error('Errore nel salvataggio delle impostazioni:', error);
+      }
+    };
+    
+    saveUserData();
+  }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, streak, achievements, isLoading]);
 
   // Calcola il totale giornaliero delle spese future da sottrarre
   const getDailyFutureExpenses = () => {
@@ -150,90 +257,205 @@ export const AppProvider = ({ children }) => {
   };
 
   // Metodi per le transazioni
-  const addTransaction = (transaction) => {
+  const addTransaction = async (transaction) => {
     const newTransaction = {
       ...transaction,
       id: Date.now(),
       amount: parseFloat(transaction.amount),
       type: transaction.type || 'expense'
     };
-    setTransactions(prev => [newTransaction, ...prev]);
+    
+    try {
+      // Aggiungi la transazione al database
+      await dbAddTransaction(newTransaction);
+      
+      // Aggiorna lo stato
+      setTransactions(prev => [newTransaction, ...prev]);
+      
+      // Aggiorna lo streak e gli achievements
+      updateStreakAndAchievements();
+      
+    } catch (error) {
+      console.error('Errore nell\'aggiunta della transazione:', error);
+    }
   };
 
-  const updateTransaction = (id, updatedData) => {
-    setTransactions(prev => 
-      prev.map(transaction => 
-        transaction.id === id ? { ...transaction, ...updatedData } : transaction
-      )
-    );
+  const updateTransaction = async (id, updatedData) => {
+    try {
+      // Trova la transazione corrente
+      const currentTransaction = transactions.find(t => t.id === id);
+      
+      if (!currentTransaction) return;
+      
+      // Crea la transazione aggiornata
+      const updatedTransaction = { ...currentTransaction, ...updatedData };
+      
+      // Aggiorna nel database
+      await dbUpdateTransaction(updatedTransaction);
+      
+      // Aggiorna lo stato
+      setTransactions(prev => 
+        prev.map(transaction => 
+          transaction.id === id ? updatedTransaction : transaction
+        )
+      );
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento della transazione:', error);
+    }
   };
 
-  const deleteTransaction = (id) => {
-    setTransactions(prev => prev.filter(transaction => transaction.id !== id));
+  const deleteTransaction = async (id) => {
+    try {
+      // Elimina dal database
+      await dbDeleteTransaction(id);
+      
+      // Aggiorna lo stato
+      setTransactions(prev => prev.filter(transaction => transaction.id !== id));
+    } catch (error) {
+      console.error('Errore nell\'eliminazione della transazione:', error);
+    }
   };
 
   // Metodi per le spese fisse
-  const addFixedExpense = (expense) => {
+  const addFixedExpense = async (expense) => {
     const newExpense = {
       ...expense,
       id: Date.now(),
       amount: parseFloat(expense.amount)
     };
-    setFixedExpenses(prev => [...prev, newExpense]);
+    
+    try {
+      // Aggiungi al database
+      await dbAddFixedExpense(newExpense);
+      
+      // Aggiorna lo stato
+      setFixedExpenses(prev => [...prev, newExpense]);
+    } catch (error) {
+      console.error('Errore nell\'aggiunta della spesa fissa:', error);
+    }
   };
 
-  const deleteFixedExpense = (id) => {
-    setFixedExpenses(prev => prev.filter(expense => expense.id !== id));
+  const deleteFixedExpense = async (id) => {
+    try {
+      // Elimina dal database
+      await dbDeleteFixedExpense(id);
+      
+      // Aggiorna lo stato
+      setFixedExpenses(prev => prev.filter(expense => expense.id !== id));
+    } catch (error) {
+      console.error('Errore nell\'eliminazione della spesa fissa:', error);
+    }
   };
 
   // Metodi per le spese future
-  const addFutureExpense = (expense) => {
+  const addFutureExpense = async (expense) => {
     const newExpense = {
       ...expense,
       id: Date.now(),
       createdAt: new Date().toISOString()
     };
-    setFutureExpenses(prev => [...prev, newExpense]);
+    
+    try {
+      // Aggiungi al database
+      await dbAddFutureExpense(newExpense);
+      
+      // Aggiorna lo stato
+      setFutureExpenses(prev => [...prev, newExpense]);
+    } catch (error) {
+      console.error('Errore nell\'aggiunta della spesa futura:', error);
+    }
   };
 
-  const updateFutureExpense = (id, updatedData) => {
-    setFutureExpenses(prev => 
-      prev.map(expense => 
-        expense.id === id ? { ...expense, ...updatedData } : expense
-      )
-    );
+  const updateFutureExpense = async (id, updatedData) => {
+    try {
+      // Trova la spesa corrente
+      const currentExpense = futureExpenses.find(e => e.id === id);
+      
+      if (!currentExpense) return;
+      
+      // Crea la spesa aggiornata
+      const updatedExpense = { ...currentExpense, ...updatedData };
+      
+      // Aggiorna nel database
+      await dbUpdateFutureExpense(updatedExpense);
+      
+      // Aggiorna lo stato
+      setFutureExpenses(prev => 
+        prev.map(expense => 
+          expense.id === id ? updatedExpense : expense
+        )
+      );
+    } catch (error) {
+      console.error('Errore nell\'aggiornamento della spesa futura:', error);
+    }
   };
 
-  const deleteFutureExpense = (id) => {
-    setFutureExpenses(prev => prev.filter(expense => expense.id !== id));
+  const deleteFutureExpense = async (id) => {
+    try {
+      // Elimina dal database
+      await dbDeleteFutureExpense(id);
+      
+      // Aggiorna lo stato
+      setFutureExpenses(prev => prev.filter(expense => expense.id !== id));
+    } catch (error) {
+      console.error('Errore nell\'eliminazione della spesa futura:', error);
+    }
   };
 
   // Funzione per aggiungere ai risparmi
-  const addToSavings = (amount, date = new Date().toISOString()) => {
+  const addToSavings = async (amount, date = new Date().toISOString()) => {
+    const newTotal = totalSavings + parseFloat(amount);
+    
     const newEntry = {
       id: Date.now(),
       amount: parseFloat(amount),
       date,
-      total: totalSavings + parseFloat(amount)
+      total: newTotal
     };
-    setSavingsHistory(prev => [...prev, newEntry]);
-    setTotalSavings(prev => prev + parseFloat(amount));
+    
+    try {
+      // Aggiungi al database
+      await dbAddSavingsEntry(newEntry);
+      
+      // Aggiorna lo stato
+      setSavingsHistory(prev => [...prev, newEntry]);
+      setTotalSavings(newTotal);
+      
+      // Aggiungi un achievement se il risparmio totale supera una soglia
+      checkSavingsAchievements(newTotal);
+      
+    } catch (error) {
+      console.error('Errore nell\'aggiunta del risparmio:', error);
+    }
   };
 
   // Funzione per prelevare dai risparmi
-  const withdrawFromSavings = (amount, date = new Date().toISOString()) => {
+  const withdrawFromSavings = async (amount, date = new Date().toISOString()) => {
+    const newTotal = totalSavings - parseFloat(amount);
+    
     const newEntry = {
       id: Date.now(),
       amount: -parseFloat(amount),
       date,
-      total: totalSavings - parseFloat(amount)
+      total: newTotal
     };
-    setSavingsHistory(prev => [...prev, newEntry]);
-    setTotalSavings(prev => prev - parseFloat(amount));
+    
+    try {
+      // Aggiungi al database
+      await dbAddSavingsEntry(newEntry);
+      
+      // Aggiorna lo stato
+      setSavingsHistory(prev => [...prev, newEntry]);
+      setTotalSavings(newTotal);
+    } catch (error) {
+      console.error('Errore nel prelievo dai risparmi:', error);
+    }
   };
 
   // Sistema automatico per aggiungere risparmi mensili
   useEffect(() => {
+    if (isLoading) return;
+    
     // Controlla se è il giorno di paga
     if (nextPaydayDate) {
       const today = new Date();
@@ -254,7 +476,57 @@ export const AppProvider = ({ children }) => {
         setLastPaydayDate(today.toISOString().split('T')[0]);
       }
     }
-  }, [nextPaydayDate, monthlyIncome, savingsPercentage, addToSavings, setNextPaydayDate, setLastPaydayDate]);
+  }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading]);
+
+  // Funzione per verificare e aggiornare streak e achievement
+  const updateStreakAndAchievements = () => {
+    const surplus = getBudgetSurplus();
+    
+    if (surplus >= 0) {
+      // Incrementa streak
+      const newStreak = streak + 1;
+      setStreak(newStreak);
+      
+      // Aggiungi achievement per streak milestone
+      if (newStreak === 7) {
+        addAchievement('Streak di 7 giorni', 'Hai mantenuto il budget per una settimana!');
+      } else if (newStreak === 30) {
+        addAchievement('Streak di 30 giorni', 'Hai mantenuto il budget per un mese intero!');
+      }
+    } else {
+      // Resetta streak
+      setStreak(0);
+    }
+  };
+
+  // Verifica achievement per risparmi
+  const checkSavingsAchievements = (total) => {
+    if (total >= 100 && !hasAchievement('Primo traguardo di risparmio')) {
+      addAchievement('Primo traguardo di risparmio', 'Hai risparmiato i primi €100!');
+    } else if (total >= 500 && !hasAchievement('Risparmio considerevole')) {
+      addAchievement('Risparmio considerevole', 'Hai raggiunto €500 di risparmi!');
+    } else if (total >= 1000 && !hasAchievement('Risparmiatore esperto')) {
+      addAchievement('Risparmiatore esperto', 'Hai raggiunto €1000 di risparmi!');
+    }
+  };
+
+  // Verifica se un achievement esiste già
+  const hasAchievement = (title) => {
+    return achievements.some(a => a.title === title);
+  };
+
+  // Aggiungi un nuovo achievement
+  const addAchievement = (title, description) => {
+    const newAchievement = {
+      id: Date.now(),
+      title,
+      description,
+      date: new Date().toISOString(),
+      seen: false
+    };
+    
+    setAchievements(prev => [...prev, newAchievement]);
+  };
 
   // Statistiche
   const getMonthlyStats = () => {
@@ -323,6 +595,7 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{
       // Stati
+      isLoading,
       currentView, setCurrentView,
       monthlyIncome, setMonthlyIncome,
       lastPaydayDate, setLastPaydayDate,
