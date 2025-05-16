@@ -4,9 +4,285 @@ import { Plus, Calendar, Minus, X, TrendingUp, TrendingDown, Flame, Receipt, Pig
 import { AppContext } from '../context/AppContext';
 import SavingsOverlay from './SavingsOverlay';
 
-// Dashboard con sfondo dinamico e luminoso
+// Componente Batteria Realistica (con colori del tema)
+const RealisticBattery = ({ day, amount, maxAmount = 200, delay }) => {
+  const { theme } = useContext(AppContext);
+  const percentage = Math.max(0, Math.min(100, (amount / maxAmount) * 100));
+  const isPositive = amount >= 0;
+  
+  // Usa i colori del tema
+  const getBatteryColor = () => {
+    if (!isPositive) return theme.danger;
+    if (percentage >= 60) return theme.secondary;
+    if (percentage >= 30) return theme.warning;
+    return theme.danger;
+  };
+  
+  const batteryColor = getBatteryColor();
+  
+  return (
+    <motion.div
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ delay: delay * 0.2, type: 'spring', stiffness: 300, damping: 30 }}
+      style={{ flex: 1, textAlign: 'center', padding: '0 10px' }}
+    >
+      {/* Giorno */}
+      <p style={{ 
+        fontSize: '14px', 
+        color: theme.textSecondary,
+        marginBottom: '12px',
+        fontWeight: '600'
+      }}>
+        {day}
+      </p>
+      
+      {/* Container della batteria */}
+      <div style={{ 
+        position: 'relative', 
+        width: '80px', 
+        height: '160px', 
+        margin: '0 auto',
+        perspective: '1000px'
+      }}>
+        {/* Batteria 3D */}
+        <div style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          transformStyle: 'preserve-3d',
+          transform: 'rotateY(10deg)'
+        }}>
+          {/* Corpo principale della batteria */}
+          <div style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '16px',
+            position: 'relative',
+            background: theme.card,
+            boxShadow: `
+              0 10px 30px rgba(0,0,0,0.1),
+              inset 0 2px 2px rgba(255,255,255,0.1),
+              inset 0 -2px 2px rgba(0,0,0,0.05)
+            `,
+            border: `2px solid ${theme.border}`,
+            overflow: 'hidden'
+          }}>
+            {/* Terminale superiore della batteria */}
+            <div style={{
+              position: 'absolute',
+              top: '-12px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '40px',
+              height: '12px',
+              background: theme.textSecondary,
+              borderRadius: '6px 6px 0 0',
+              boxShadow: '0 -2px 4px rgba(0,0,0,0.1)',
+              border: `1px solid ${theme.border}`
+            }}>
+              {/* Dettaglio metallico sul terminale */}
+              <div style={{
+                position: 'absolute',
+                top: '3px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '20px',
+                height: '2px',
+                backgroundColor: theme.background,
+                boxShadow: 'inset 0 1px 1px rgba(0,0,0,0.2)'
+              }} />
+            </div>
+            
+            {/* Area di visualizzazione trasparente */}
+            <div style={{
+              position: 'absolute',
+              top: '10px',
+              left: '10px',
+              right: '10px',
+              bottom: '10px',
+              borderRadius: '12px',
+              backgroundColor: theme.background,
+              overflow: 'hidden',
+              boxShadow: 'inset 0 0 10px rgba(0,0,0,0.1)'
+            }}>
+              {/* Livello di carica */}
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${percentage}%` }}
+                transition={{ 
+                  duration: 1.5, 
+                  ease: "easeInOut", 
+                  delay: delay * 0.3 
+                }}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  background: `linear-gradient(180deg, 
+                    ${batteryColor} 0%, 
+                    ${batteryColor}DD 50%,
+                    ${batteryColor}99 100%)`,
+                  borderRadius: '0 0 10px 10px',
+                  boxShadow: `
+                    0 0 20px ${batteryColor}66,
+                    inset 0 0 10px ${batteryColor}AA
+                  `
+                }}
+              >
+                {/* Effetto luminoso animato */}
+                <motion.div
+                  animate={{
+                    opacity: [0.3, 0.6, 0.3],
+                    y: [-10, 0, -10]
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '30px',
+                    background: `linear-gradient(180deg, 
+                      rgba(255,255,255,0.4) 0%, 
+                      transparent 100%)`,
+                    filter: 'blur(8px)'
+                  }}
+                />
+                
+                {/* Bolle animate (solo quando sta caricando) */}
+                {percentage > 0 && percentage < 100 && (
+                  <>
+                    {[...Array(3)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        animate={{
+                          y: [-20, -140],
+                          x: [0, Math.random() * 20 - 10],
+                          scale: [0.5, 1, 0.3],
+                          opacity: [0, 0.7, 0]
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          delay: i * 0.7,
+                          ease: "easeOut"
+                        }}
+                        style={{
+                          position: 'absolute',
+                          bottom: '10px',
+                          left: `${30 + i * 20}%`,
+                          width: '6px',
+                          height: '6px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(255,255,255,0.6)',
+                          boxShadow: '0 0 4px rgba(255,255,255,0.4)'
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </motion.div>
+              
+              {/* Importo al centro della batteria */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: delay * 0.5 }}
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  fontSize: '22px',
+                  fontWeight: '700',
+                  color: theme.text,
+                  textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  backgroundColor: `${theme.card}ee`,
+                  padding: '8px 12px',
+                  borderRadius: '12px',
+                  backdropFilter: 'blur(4px)',
+                  whiteSpace: 'nowrap',
+                  minWidth: '60px',
+                  textAlign: 'center',
+                  border: `1px solid ${theme.border}`
+                }}
+              >
+                € {Math.abs(amount).toFixed(0)}
+              </motion.div>
+              
+              {/* Linee di livello */}
+              {[25, 50, 75].map((level) => (
+                <div
+                  key={level}
+                  style={{
+                    position: 'absolute',
+                    bottom: `${level}%`,
+                    left: 0,
+                    right: 0,
+                    height: '1px',
+                    backgroundColor: theme.border
+                  }}
+                />
+              ))}
+            </div>
+            
+            {/* Riflesso sulla batteria */}
+            <div style={{
+              position: 'absolute',
+              top: '15px',
+              left: '15px',
+              width: '25px',
+              height: '60px',
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%)',
+              borderRadius: '8px',
+              transform: 'skewY(-20deg)',
+              filter: 'blur(2px)'
+            }} />
+            
+            {/* Indicatore di carica (fulmine) */}
+            {percentage > 0 && percentage < 100 && (
+              <motion.div
+                animate={{
+                  opacity: [0.5, 1, 0.5],
+                  scale: [0.8, 1, 0.8]
+                }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: theme.card,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: `0 0 10px ${theme.primary}40`,
+                  border: `1px solid ${theme.border}`
+                }}
+              >
+                <span style={{ fontSize: '14px' }}>⚡</span>
+              </motion.div>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const Dashboard = () => {
-  // Accedi al context dell'app
   const { 
     theme, 
     categories, 
@@ -25,7 +301,6 @@ const Dashboard = () => {
     getDailyFutureExpenses
   } = useContext(AppContext);
 
-  // Stati per la UI
   const [newTransaction, setNewTransaction] = useState({
     amount: '',
     categoryId: 1,
@@ -33,35 +308,11 @@ const Dashboard = () => {
     date: new Date().toISOString().split('T')[0],
     type: 'expense'
   });
+
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [transactionType, setTransactionType] = useState('expense');
   const [showSavingsOverlay, setShowSavingsOverlay] = useState(false);
-  
-  // Stati per animazioni
-  const [time, setTime] = useState(0);
-  const [bubbles, setBubbles] = useState([]);
-  const [showMenu, setShowMenu] = useState(false);
-  
-  // Genera bolle animate casuali all'avvio
-  useEffect(() => {
-    const newBubbles = Array.from({ length: 15 }, () => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 150 + 50,
-      speed: Math.random() * 40 + 20,
-      opacity: Math.random() * 0.3 + 0.1,
-      startAngle: Math.random() * 360
-    }));
-    setBubbles(newBubbles);
-    
-    // Timer per animazioni
-    const timer = setInterval(() => {
-      setTime(prev => prev + 0.01);
-    }, 10);
-    
-    return () => clearInterval(timer);
-  }, []);
-  
+
   // Formattazione importo
   const formatAmount = (value) => {
     if (!value) return '';
@@ -73,25 +324,33 @@ const Dashboard = () => {
   // Calcoli budget
   const dailyBudget = calculateDailyBudget();
   const budgetSurplus = getBudgetSurplus();
-  const isNegativeBudget = budgetSurplus < 0;
   
   // Calcolo budget per i prossimi giorni
   const tomorrowBudget = dailyBudget + budgetSurplus;
   const afterTomorrowBudget = tomorrowBudget + dailyBudget;
 
-  // Dati per la visualizzazione dei giorni
+  // Dati per le batterie
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const afterTomorrow = new Date(today);
   afterTomorrow.setDate(afterTomorrow.getDate() + 2);
 
-  const days = [
-    "Oggi", 
-    tomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).charAt(0).toUpperCase() + 
-    tomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).slice(1),
-    afterTomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).charAt(0).toUpperCase() + 
-    afterTomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).slice(1)
+  const batteryData = [
+    {
+      day: 'Oggi',
+      amount: budgetSurplus
+    },
+    {
+      day: tomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).charAt(0).toUpperCase() + 
+           tomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).slice(1),
+      amount: tomorrowBudget
+    },
+    {
+      day: afterTomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).charAt(0).toUpperCase() + 
+           afterTomorrow.toLocaleDateString('it-IT', { weekday: 'short' }).slice(1),
+      amount: afterTomorrowBudget
+    }
   ];
 
   // Calcolo saldo mensile
@@ -125,7 +384,6 @@ const Dashboard = () => {
 
   const monthlyBalance = calculateMonthlyBalance();
   const daysUntilPayday = getDaysUntilPayday();
-  const dailyFutureExpenses = getDailyFutureExpenses();
 
   // Gestione transazioni
   const handleAddTransaction = () => {
@@ -174,161 +432,35 @@ const Dashboard = () => {
       return "Attenzione al budget di oggi! ⚠️";
     }
   };
-  
+
   return (
-    <div style={{ 
-      background: isNegativeBudget 
-        ? 'linear-gradient(135deg, #B91C1C 0%, #7F1D1D 100%)' 
-        : 'linear-gradient(135deg, #0EA5E9 0%, #047857 100%)', // Gradiente blu-verde più vivace
-      fontFamily: '"Inter", system-ui, sans-serif',
-      padding: '32px 24px',
-      minHeight: '100vh',
-      width: '100%',
-      color: '#FFFFFF',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
+    <motion.div 
+      className="dashboard"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      style={{ 
+        paddingBottom: '120px',
+        background: `linear-gradient(180deg, ${theme.card} 0%, ${theme.background} 50%, ${theme.background} 100%)`,
+        minHeight: '100vh'
+      }}
+    >
       {/* Savings Overlay */}
       <SavingsOverlay isOpen={showSavingsOverlay} onClose={() => setShowSavingsOverlay(false)} />
-      
-      {/* Sfondo luminoso e dinamico */}
-      <div style={{
-        position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
-        overflow: 'hidden',
-        zIndex: 0
-      }}>
-        {/* Gradiente animato sovrapposto */}
-        <div style={{
-          position: 'absolute',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: `radial-gradient(circle at ${50 + Math.sin(time) * 10}% ${50 + Math.cos(time) * 10}%, rgba(255,255,255,0.15) 0%, transparent 50%)`,
-          opacity: 0.8 + Math.sin(time) * 0.2,
-          transition: 'opacity 0.5s ease'
-        }} />
-        
-        {/* Effetto di luce che si muove */}
-        <div style={{
-          position: 'absolute',
-          top: `${30 + Math.sin(time * 0.5) * 15}%`,
-          left: `${20 + Math.cos(time * 0.7) * 20}%`,
-          width: '150px',
-          height: '150px',
-          borderRadius: '50%',
-          background: 'rgba(255,255,255,0.1)',
-          filter: 'blur(40px)',
-          opacity: 0.5 + Math.sin(time) * 0.2
-        }} />
-        
-        {/* Seconda luce che si muove */}
-        <div style={{
-          position: 'absolute',
-          bottom: `${20 + Math.cos(time * 0.6) * 15}%`,
-          right: `${25 + Math.sin(time * 0.5) * 20}%`,
-          width: '180px',
-          height: '180px',
-          borderRadius: '50%',
-          background: 'rgba(255,255,255,0.08)',
-          filter: 'blur(50px)',
-          opacity: 0.3 + Math.cos(time) * 0.15
-        }} />
-        
-        {/* Bolle fluttuanti */}
-        {bubbles.map((bubble, index) => (
-          <div 
-            key={index}
-            style={{
-              position: 'absolute',
-              left: `${bubble.x}%`,
-              top: `${bubble.y + Math.sin((time + bubble.startAngle) / (bubble.speed)) * 3}%`,
-              width: `${bubble.size}px`,
-              height: `${bubble.size}px`,
-              borderRadius: '50%',
-              background: isNegativeBudget 
-                ? 'radial-gradient(circle, rgba(254,226,226,0.15) 0%, transparent 70%)' 
-                : 'radial-gradient(circle, rgba(209,250,229,0.15) 0%, transparent 70%)',
-              opacity: bubble.opacity + Math.sin(time * 0.8) * 0.05,
-              transition: 'all 1s ease-in-out',
-              transform: `scale(${1 + Math.sin(time * 0.3) * 0.1})`,
-              filter: 'blur(8px)'
-            }}
-          />
-        ))}
-        
-        {/* Effetto particelle brillanti */}
-        {Array.from({ length: 20 }).map((_, i) => {
-          const speed = 0.3 + Math.random() * 0.7;
-          const angle = Math.random() * Math.PI * 2;
-          const radius = 30 + Math.random() * 40;
-          const x = 50 + Math.cos(time * speed + angle) * radius;
-          const y = 50 + Math.sin(time * speed + angle) * radius;
-          
-          return (
-            <div 
-              key={i}
-              style={{
-                position: 'absolute',
-                left: `${x}%`,
-                top: `${y}%`,
-                width: `${2 + Math.random() * 4}px`,
-                height: `${2 + Math.random() * 4}px`,
-                borderRadius: '50%',
-                backgroundColor: '#FFFFFF',
-                opacity: 0.1 + Math.random() * 0.4,
-                filter: 'blur(1px)'
-              }}
-            />
-          );
-        })}
-      </div>
-      
-      {/* Onda animata superiore */}
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '120px',
-        overflow: 'hidden',
-        zIndex: 0
-      }}>
-        <svg 
-          viewBox="0 0 1200 120" 
-          preserveAspectRatio="none" 
-          style={{ 
-            position: 'absolute', 
-            top: 0, 
-            left: `${-20 + Math.sin(time) * 10}%`, 
-            width: '140%', 
-            height: '100%',
-            opacity: 0.2
-          }}
-        >
-          <path 
-            d="M985.66,92.83C906.67,72,823.78,31,743.84,14.19c-82.26-17.34-168.06-16.33-250.45.39-57.84,11.73-114,31.07-172,41.86A600.21,600.21,0,0,1,0,27.35V120H1200V95.8C1132.19,118.92,1055.71,111.31,985.66,92.83Z" 
-            fill="#FFFFFF" 
-          />
-        </svg>
-      </div>
 
       {/* Header con data, streak e saldo mensile */}
       <motion.div 
+        className="header"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         style={{
+          padding: '16px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '30px',
-          position: 'relative',
-          zIndex: 1
+          alignItems: 'center'
         }}
       >
         <div>
-          <p style={{ 
-            color: 'rgba(255, 255, 255, 0.9)', 
-            fontSize: '14px' 
-          }}>
+          <p style={{ color: theme.textSecondary, fontSize: '14px' }}>
             {new Date().toLocaleDateString('it-IT', { 
               weekday: 'long', 
               day: 'numeric', 
@@ -346,12 +478,8 @@ const Dashboard = () => {
                 marginTop: '4px'
               }}
             >
-              <Flame size={16} style={{ color: '#FCA5A5', marginRight: '4px' }} />
-              <span style={{ 
-                fontSize: '14px', 
-                fontWeight: '600', 
-                color: '#FCA5A5'
-              }}>
+              <Flame size={16} style={{ color: theme.danger, marginRight: '4px' }} />
+              <span style={{ fontSize: '14px', fontWeight: '600', color: theme.danger }}>
                 {streak} giorni di streak!
               </span>
             </motion.div>
@@ -367,172 +495,111 @@ const Dashboard = () => {
               width: '40px',
               height: '40px',
               borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.2)',
-              backdropFilter: 'blur(4px)',
-              border: '1px solid rgba(255, 255, 255, 0.4)',
+              background: `linear-gradient(135deg, ${theme.primary} 0%, #5A85FF 100%)`,
+              border: 'none',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              boxShadow: '0 4px 12px rgba(76, 111, 255, 0.3)',
             }}
           >
             <PiggyBank size={22} color="white" />
           </motion.button>
           
           <div style={{ textAlign: 'right' }}>
-            <p style={{ 
-              fontSize: '12px', 
-              color: 'rgba(255, 255, 255, 0.7)'
-            }}>
-              Saldo mensile
-            </p>
+            <p style={{ fontSize: '12px', color: theme.textSecondary }}>Saldo mensile</p>
             <p style={{ 
               fontSize: '18px', 
               fontWeight: '700', 
-              color: '#FFFFFF',
-              textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+              color: monthlyBalance >= 0 ? theme.secondary : theme.danger 
             }}>
-              € {monthlyBalance.toFixed(2).replace('.', ',')}
+              € {monthlyBalance.toFixed(2)}
             </p>
           </div>
         </div>
       </motion.div>
 
-      {/* Info prossimo stipendio - versione elegante */}
-      {nextPaydayDate && daysUntilPayday !== null && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          style={{
-            marginBottom: '30px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            opacity: 0.95,
-            position: 'relative',
-            zIndex: 1,
-            padding: '10px 16px',
-            borderRadius: '30px',
-            background: 'rgba(255, 255, 255, 0.15)',
-            backdropFilter: 'blur(4px)',
-            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.2)'
-          }}
-        >
-          <Calendar size={16} color="#FFFFFF" style={{ opacity: 0.9 }} />
-          <div>
-            <p style={{ 
-              fontWeight: '600', 
-              color: '#FFFFFF',
-              fontSize: '14px'
-            }}>
-              {daysUntilPayday} giorni al prossimo stipendio
-            </p>
-            <p style={{ 
-              fontSize: '12px', 
-              color: 'rgba(255, 255, 255, 0.7)',
-            }}>
-              {new Date(nextPaydayDate).toLocaleDateString('it-IT', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'short' 
-              })}
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Importo principale - ancora più brillante */}
+      {/* Titolo principale */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         style={{
-          marginBottom: '100px',
           textAlign: 'center',
-          position: 'relative',
-          zIndex: 1
+          padding: '0 16px',
+          marginBottom: '32px'
         }}
       >
-        <div style={{
-          position: 'relative',
-          display: 'inline-block',
+        <h1 style={{ 
+          fontSize: '24px', 
+          fontWeight: '600', 
+          color: theme.textSecondary,
+          marginBottom: '8px'
         }}>
-          <motion.p
-            key={budgetSurplus}
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            style={{
-              fontSize: '60px',
-              fontWeight: '700',
-              color: '#FFFFFF',
-              marginBottom: '8px',
-              textShadow: '0 2px 10px rgba(0,0,0,0.15)',
-              transform: `scale(${1 + Math.sin(time * 2) * 0.01})`,
-              transition: 'transform 0.2s ease-in-out'
-            }}
-          >
-            {isNegativeBudget ? '-' : ''}€&nbsp;{Math.abs(budgetSurplus).toFixed(2).replace('.', ',')}
-          </motion.p>
-          
-          {/* Glow effect animato */}
-          <div style={{
-            position: 'absolute',
-            top: '-50%',
-            left: '-20%',
-            right: '-20%',
-            bottom: '-50%',
-            background: `radial-gradient(ellipse at center, ${isNegativeBudget ? '#FEE2E220' : '#A7F3D020'} 0%, transparent 70%)`,
-            zIndex: -1,
-            opacity: 0.5 + Math.sin(time * 2) * 0.2,
-            transform: `scale(${1 + Math.sin(time) * 0.05})`,
-            transition: 'all 0.5s ease'
-          }}></div>
-        </div>
-        
-        <div style={{
-          height: '4px',
-          width: '80px',
-          background: `linear-gradient(90deg, transparent 0%, ${isNegativeBudget ? '#FEE2E2' : '#FFFFFF'} 50%, transparent 100%)`,
-          boxShadow: `0 0 10px ${isNegativeBudget ? '#FECACA' : '#A7F3D0'}`,
-          margin: '0 auto 16px auto',
-          borderRadius: '2px',
-          opacity: 0.7 + Math.sin(time * 2) * 0.3
-        }}></div>
-        
+          Budget di Oggi
+        </h1>
+        <motion.p
+          key={budgetSurplus}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          style={{
+            fontSize: '48px',
+            fontWeight: '700',
+            color: budgetSurplus >= 0 ? theme.secondary : theme.danger,
+            marginBottom: '8px'
+          }}
+        >
+          {budgetSurplus >= 0 ? '' : '-'}€ {Math.abs(budgetSurplus).toFixed(2)}
+        </motion.p>
         <motion.p
           animate={{ opacity: [0.6, 1, 0.6] }}
           transition={{ duration: 2, repeat: Infinity }}
           style={{
-            fontSize: '16px',
+            fontSize: '14px',
             fontWeight: '500',
-            color: isNegativeBudget ? '#FECACA' : '#ECFDF5',
-            textAlign: 'center',
-            textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+            color: budgetSurplus >= 0 ? theme.secondary : theme.warning
           }}
         >
           {getMotivationalMessage()}
         </motion.p>
       </motion.div>
 
-      {/* Indicatore spese future */}
-      {dailyFutureExpenses > 0 && (
+      {/* Batterie realistiche */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          padding: '20px 16px',
+          gap: '8px',
+          marginBottom: '24px'
+        }}
+      >
+        {batteryData.map((battery, index) => (
+          <RealisticBattery
+            key={battery.day}
+            day={battery.day}
+            amount={battery.amount}
+            delay={index}
+          />
+        ))}
+      </motion.div>
+
+      {/* Info prossimo stipendio */}
+      {nextPaydayDate && daysUntilPayday !== null && (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.3 }}
           style={{
-            margin: '0 auto 30px auto',
-            maxWidth: '90%',
-            padding: '12px 16px',
+            margin: '16px',
+            padding: '16px',
             borderRadius: '16px',
-            backgroundColor: 'rgba(255, 255, 255, 0.15)',
-            backdropFilter: 'blur(4px)',
-            boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.2)',
-            position: 'relative',
-            zIndex: 1
+            backgroundColor: `${theme.primary}10`,
+            border: `1px solid ${theme.primary}20`
           }}
         >
           <div style={{
@@ -541,102 +608,73 @@ const Dashboard = () => {
             alignItems: 'center'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Receipt size={18} style={{ color: '#FFFFFF' }} />
+              <Calendar size={20} style={{ color: theme.primary }} />
               <div>
-                <p style={{ fontWeight: '600', color: '#FFFFFF', fontSize: '14px' }}>
-                  Accantonamento spese future
+                <p style={{ fontWeight: '500', color: theme.text }}>
+                  Prossimo stipendio
                 </p>
-                <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                  Sottratto automaticamente dal budget
+                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                  {new Date(nextPaydayDate).toLocaleDateString('it-IT', { 
+                    weekday: 'long', 
+                    day: 'numeric', 
+                    month: 'short' 
+                  })}
                 </p>
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '18px', fontWeight: '700', color: '#FFFFFF' }}>
-                € {dailyFutureExpenses.toFixed(2).replace('.', ',')}
+              <p style={{ fontSize: '24px', fontWeight: '700', color: theme.primary }}>
+                {daysUntilPayday}
               </p>
-              <p style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                al giorno
+              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                {daysUntilPayday === 1 ? 'giorno' : 'giorni'}
               </p>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* Budget per i prossimi giorni - senza box */}
-      <motion.div 
-        initial={{ y: 30, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.6, type: 'spring', stiffness: 100 }}
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          gap: '20px',
-          position: 'absolute',
-          bottom: '180px',
-          left: '24px',
-          right: '24px',
-          zIndex: 1
-        }}
-      >
-        {[budgetSurplus, tomorrowBudget, afterTomorrowBudget].map((amount, index) => {
-          const isNegative = amount < 0;
-          return (
-            <motion.div 
-              key={index}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ 
-                delay: 0.7 + (index * 0.1),
-                type: 'spring',
-                stiffness: 200
-              }}
-              whileHover={{ y: -5 }}
-              style={{
-                flex: 1,
-                textAlign: 'center',
-                position: 'relative',
-                transform: `translateY(${Math.sin(time * 2 + index) * 3}px)`,
-                transition: 'transform 0.5s ease'
-              }}
-            >
-              {/* Giorno */}
-              <p style={{
-                fontSize: '14px',
-                fontWeight: '600',
-                color: isNegativeBudget ? '#FEE2E2' : '#D1FAE5',
-                marginBottom: '8px',
-                opacity: 0.9
-              }}>
-                {days[index]}
+      {/* Indicatore spese future */}
+      {getDailyFutureExpenses() > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.4 }}
+          style={{
+            margin: '16px',
+            padding: '16px',
+            borderRadius: '16px',
+            backgroundColor: `${theme.warning}10`,
+            border: `1px solid ${theme.warning}20`
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Receipt size={20} style={{ color: theme.warning }} />
+              <div>
+                <p style={{ fontWeight: '500', color: theme.text }}>
+                  Accantonamento spese future
+                </p>
+                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                  Sottratto automaticamente dal budget
+                </p>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontSize: '20px', fontWeight: '700', color: theme.warning }}>
+                € {getDailyFutureExpenses().toFixed(2)}
               </p>
-              
-              {/* Importo */}
-              <p style={{
-                fontSize: '24px',
-                fontWeight: '700',
-                color: '#FFFFFF',
-                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-              }}>
-                {isNegative ? '-' : ''}€ {Math.abs(amount).toFixed(2).replace('.', ',')}
+              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                al giorno
               </p>
-              
-              {/* Linea luminosa sotto il giorno corrente */}
-              {index === 0 && (
-                <div style={{
-                  position: 'absolute',
-                  bottom: '-12px',
-                  left: '25%', 
-                  right: '25%',
-                  height: '2px',
-                  background: `linear-gradient(90deg, transparent 0%, ${isNegativeBudget ? '#FECACA' : '#A7F3D0'} 50%, transparent 100%)`,
-                  opacity: 0.5 + Math.sin(time * 3) * 0.3
-                }}></div>
-              )}
-            </motion.div>
-          );
-        })}
-      </motion.div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Fixed Action Buttons */}
       <motion.div
@@ -645,16 +683,16 @@ const Dashboard = () => {
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         style={{
           position: 'fixed',
-          bottom: '32px',
+          bottom: '90px',
           left: '0',
           right: '0',
-          padding: '0 24px',
-          zIndex: 20,
-          maxWidth: '428px',
-          margin: '0 auto'
+          padding: '0 16px',
+          zIndex: 20
         }}
       >
         <div style={{ 
+          maxWidth: '428px',
+          margin: '0 auto',
           display: 'flex', 
           gap: '12px' 
         }}>
@@ -672,10 +710,8 @@ const Dashboard = () => {
               fontWeight: '600',
               fontSize: '16px',
               border: 'none',
-              background: 'rgba(16, 185, 129, 0.8)',
-              backdropFilter: 'blur(4px)',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-              cursor: 'pointer'
+              background: `linear-gradient(135deg, ${theme.secondary} 0%, ${theme.secondary}CC 100%)`,
+              boxShadow: `0 4px 12px ${theme.secondary}40`
             }}
             onClick={() => {
               setTransactionType('income');
@@ -701,10 +737,8 @@ const Dashboard = () => {
               fontWeight: '600',
               fontSize: '16px',
               border: 'none',
-              background: 'rgba(239, 68, 68, 0.8)',
-              backdropFilter: 'blur(4px)',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-              cursor: 'pointer'
+              background: `linear-gradient(135deg, ${theme.danger} 0%, ${theme.danger}CC 100%)`,
+              boxShadow: `0 4px 12px ${theme.danger}40`
             }}
             onClick={() => {
               setTransactionType('expense');
@@ -754,7 +788,7 @@ const Dashboard = () => {
               }}
             >
               <div style={{
-                backgroundColor: '#FFFFFF',
+                backgroundColor: theme.card,
                 borderTopLeftRadius: '32px',
                 borderTopRightRadius: '32px',
                 height: '85vh',
@@ -765,7 +799,7 @@ const Dashboard = () => {
                 {/* Header con pulsante Salva */}
                 <div style={{ 
                   padding: '16px 20px',
-                  borderBottom: `1px solid #E5E7EB`
+                  borderBottom: `1px solid ${theme.border}`
                 }}>
                   {/* Handle bar */}
                   <div style={{ 
@@ -777,7 +811,7 @@ const Dashboard = () => {
                       style={{ 
                         width: '48px',
                         height: '5px',
-                        backgroundColor: '#E5E7EB',
+                        backgroundColor: theme.border,
                         borderRadius: '3px',
                         cursor: 'pointer'
                       }}
@@ -798,7 +832,7 @@ const Dashboard = () => {
                         padding: '8px',
                         backgroundColor: 'transparent',
                         border: 'none',
-                        color: '#6B7280',
+                        color: theme.textSecondary,
                         fontSize: '16px',
                         cursor: 'pointer'
                       }}
@@ -809,7 +843,7 @@ const Dashboard = () => {
                     <h2 style={{
                       fontSize: '17px',
                       fontWeight: '600',
-                      color: '#1F2937'
+                      color: theme.text
                     }}>
                       {transactionType === 'expense' ? 'Nuova Spesa' : 'Nuova Entrata'}
                     </h2>
@@ -820,8 +854,8 @@ const Dashboard = () => {
                       style={{
                         padding: '8px 16px',
                         backgroundColor: newTransaction.amount && parseFloat(newTransaction.amount) > 0
-                          ? (transactionType === 'expense' ? '#EF4444' : '#10B981')
-                          : '#E5E7EB',
+                          ? (transactionType === 'expense' ? theme.danger : theme.secondary)
+                          : theme.border,
                         border: 'none',
                         borderRadius: '8px',
                         color: 'white',
@@ -839,7 +873,7 @@ const Dashboard = () => {
                   {/* Tipo di transazione come tabs */}
                   <div style={{
                     display: 'flex',
-                    backgroundColor: '#F8FAFC',
+                    backgroundColor: theme.background,
                     borderRadius: '12px',
                     padding: '4px'
                   }}>
@@ -853,8 +887,8 @@ const Dashboard = () => {
                         padding: '8px',
                         borderRadius: '8px',
                         border: 'none',
-                        backgroundColor: transactionType === 'expense' ? '#FFFFFF' : 'transparent',
-                        color: transactionType === 'expense' ? '#EF4444' : '#6B7280',
+                        backgroundColor: transactionType === 'expense' ? theme.card : 'transparent',
+                        color: transactionType === 'expense' ? theme.danger : theme.textSecondary,
                         fontWeight: '600',
                         fontSize: '14px',
                         cursor: 'pointer',
@@ -873,8 +907,8 @@ const Dashboard = () => {
                         padding: '8px',
                         borderRadius: '8px',
                         border: 'none',
-                        backgroundColor: transactionType === 'income' ? '#FFFFFF' : 'transparent',
-                        color: transactionType === 'income' ? '#10B981' : '#6B7280',
+                        backgroundColor: transactionType === 'income' ? theme.card : 'transparent',
+                        color: transactionType === 'income' ? theme.secondary : theme.textSecondary,
                         fontWeight: '600',
                         fontSize: '14px',
                         cursor: 'pointer',
@@ -898,7 +932,7 @@ const Dashboard = () => {
                     marginBottom: '24px'
                   }}>
                     <div style={{
-                      backgroundColor: '#F8FAFC',
+                      backgroundColor: theme.background,
                       borderRadius: '20px',
                       padding: '20px',
                       textAlign: 'center'
@@ -907,7 +941,7 @@ const Dashboard = () => {
                         display: 'block',
                         fontSize: '13px',
                         fontWeight: '500',
-                        color: '#6B7280',
+                        color: theme.textSecondary,
                         marginBottom: '12px'
                       }}>
                         Importo
@@ -923,7 +957,7 @@ const Dashboard = () => {
                         <span style={{
                           fontSize: '36px',
                           fontWeight: '700',
-                          color: transactionType === 'expense' ? '#EF4444' : '#10B981'
+                          color: transactionType === 'expense' ? theme.danger : theme.secondary
                         }}>
                           €
                         </span>
@@ -952,10 +986,10 @@ const Dashboard = () => {
                             outline: 'none',
                             fontSize: '36px',
                             fontWeight: '700',
-                            color: '#1F2937',
+                            color: theme.text,
                             width: '180px',
                             textAlign: 'left',
-                            caretColor: transactionType === 'expense' ? '#EF4444' : '#10B981'
+                            caretColor: transactionType === 'expense' ? theme.danger : theme.secondary
                           }}
                           autoFocus
                         />
@@ -970,13 +1004,13 @@ const Dashboard = () => {
                           width: '100%',
                           backgroundColor: 'transparent',
                           border: 'none',
-                          borderBottom: `1px solid #E5E7EB`,
+                          borderBottom: `1px solid ${theme.border}`,
                           outline: 'none',
                           textAlign: 'center',
                           fontSize: '14px',
-                          color: '#6B7280',
+                          color: theme.textSecondary,
                           padding: '8px',
-                          caretColor: '#3B82F6'
+                          caretColor: theme.primary
                         }}
                       />
                     </div>
@@ -988,7 +1022,7 @@ const Dashboard = () => {
                       display: 'block',
                       fontSize: '14px',
                       fontWeight: '500',
-                      color: '#6B7280',
+                      color: theme.textSecondary,
                       marginBottom: '12px',
                       paddingLeft: '4px'
                     }}>
@@ -1003,22 +1037,22 @@ const Dashboard = () => {
                       paddingRight: '8px',
                       WebkitOverflowScrolling: 'touch',
                       scrollbarWidth: 'thin',
-                      scrollbarColor: `#6B7280 #F8FAFC`
+                      scrollbarColor: `${theme.textSecondary} ${theme.background}`
                     }}>
                       <style>{`
                         .categories-scroll::-webkit-scrollbar {
                           width: 6px;
                         }
                         .categories-scroll::-webkit-scrollbar-track {
-                          background: #F8FAFC;
+                          background: ${theme.background};
                           border-radius: 3px;
                         }
                         .categories-scroll::-webkit-scrollbar-thumb {
-                          background: #6B7280;
+                          background: ${theme.textSecondary};
                           border-radius: 3px;
                         }
                         .categories-scroll::-webkit-scrollbar-thumb:hover {
-                          background: #1F2937;
+                          background: ${theme.text};
                         }
                       `}</style>
                       
@@ -1047,7 +1081,7 @@ const Dashboard = () => {
                                 border: 'none',
                                 backgroundColor: parseInt(newTransaction.categoryId) === category.id 
                                   ? `${category.color}20` 
-                                  : '#F8FAFC',
+                                  : theme.background,
                                 cursor: 'pointer',
                                 transition: 'all 0.2s ease',
                                 borderWidth: '2px',
@@ -1073,7 +1107,7 @@ const Dashboard = () => {
                               <span style={{
                                 fontSize: '14px',
                                 fontWeight: '500',
-                                color: '#1F2937',
+                                color: theme.text,
                                 textAlign: 'left',
                                 flex: 1,
                                 lineHeight: '1.2'
@@ -1095,7 +1129,7 @@ const Dashboard = () => {
                           textAlign: 'center',
                           marginTop: '8px',
                           fontSize: '12px',
-                          color: '#6B7280',
+                          color: theme.textSecondary,
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -1118,7 +1152,7 @@ const Dashboard = () => {
           </>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 };
 
