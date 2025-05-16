@@ -1,14 +1,14 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Minus, PiggyBank, Calendar, Receipt, X } from 'lucide-react';
+import { Plus, Minus, PiggyBank, Calendar, X } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 import SavingsOverlay from './SavingsOverlay';
 
-// Dashboard con visualizzazione minimalista e funzionalità complete
+// Dashboard con design minimalista e moderno
 const MinimalistDashboard = () => {
   // Usa il contesto dell'app per accedere ai dati e alle funzioni
   const { 
-    theme, 
+    theme: appTheme,
     categories,
     calculateDailyBudget, 
     getBudgetSurplus,
@@ -23,6 +23,19 @@ const MinimalistDashboard = () => {
     savingsPercentage,
     transactions
   } = useContext(AppContext);
+
+  // Tema minimalista
+  const theme = {
+    primary: '#0F172A',    // Blu scuro quasi nero
+    accent: '#3B82F6',     // Blu per accenti
+    positive: '#22C55E',   // Verde
+    negative: '#EF4444',   // Rosso
+    background: '#F8FAFC',
+    card: '#FFFFFF',
+    border: '#E2E8F0',
+    text: '#1E293B',
+    textSecondary: '#64748B',
+  };
 
   // Stati interni per l'UI
   const [isFlowing, setIsFlowing] = useState(false);
@@ -47,6 +60,20 @@ const MinimalistDashboard = () => {
   const afterTomorrowBudget = tomorrowBudget + dailyBudget;
   const daysUntilPayday = getDaysUntilPayday();
   const dailyFutureExpenses = getDailyFutureExpenses();
+  
+  // Giorni della settimana
+  const getDayName = (addDays = 0) => {
+    const date = new Date();
+    date.setDate(date.getDate() + addDays);
+    return date.toLocaleDateString('it-IT', { weekday: 'short' })
+      .replace('.', '') // Rimuove eventuali punti
+      .charAt(0).toUpperCase() + date.toLocaleDateString('it-IT', { weekday: 'short' })
+      .replace('.', '')
+      .slice(1);
+  };
+  
+  // Giorni della settimana corretti
+  const days = ["Oggi", getDayName(1), getDayName(2)];
 
   // Calcolo saldo mensile
   const calculateMonthlyBalance = () => {
@@ -78,20 +105,6 @@ const MinimalistDashboard = () => {
   };
 
   const monthlyBalance = calculateMonthlyBalance();
-
-  // Calcola i giorni corretti basati sulla data attuale
-  const getDayName = (addDays = 0) => {
-    const date = new Date();
-    date.setDate(date.getDate() + addDays);
-    return date.toLocaleDateString('it-IT', { weekday: 'short' })
-      .replace('.', '') // Rimuove eventuali punti
-      .charAt(0).toUpperCase() + date.toLocaleDateString('it-IT', { weekday: 'short' })
-      .replace('.', '')
-      .slice(1);
-  };
-  
-  // Giorni della settimana corretti
-  const days = ["Oggi", getDayName(1), getDayName(2)];
   
   // Formattazione importo
   const formatAmount = (value) => {
@@ -101,51 +114,7 @@ const MinimalistDashboard = () => {
     return formatted.replace('.', ',');
   };
 
-  // Simula una spesa rapida
-  const addExpense = (amount) => {
-    if (isFlowing) return;
-    
-    setAnimationType('expense');
-    setIsFlowing(true);
-    
-    // Aggiungi la transazione tramite il contesto
-    addTransaction({
-      amount: amount,
-      categoryId: 1, // Categoria predefinita
-      description: 'Spesa rapida',
-      date: new Date().toISOString().split('T')[0],
-      type: 'expense'
-    });
-    
-    // Disattiva l'animazione dopo un po'
-    setTimeout(() => {
-      setIsFlowing(false);
-    }, 2000);
-  };
-  
-  // Simula un'entrata rapida
-  const addIncome = (amount) => {
-    if (isFlowing) return;
-    
-    setAnimationType('income');
-    setIsFlowing(true);
-    
-    // Aggiungi la transazione tramite il contesto
-    addTransaction({
-      amount: amount,
-      categoryId: 21, // Categoria entrate predefinita
-      description: 'Entrata rapida',
-      date: new Date().toISOString().split('T')[0],
-      type: 'income'
-    });
-    
-    // Disattiva l'animazione dopo un po'
-    setTimeout(() => {
-      setIsFlowing(false);
-    }, 2000);
-  };
-
-  // Gestione transazioni dettagliate
+  // Gestione transazioni
   const handleAddTransaction = () => {
     let amountValue = '';
     if (newTransaction.amount) {
@@ -183,59 +152,62 @@ const MinimalistDashboard = () => {
   // Messaggio motivazionale
   const getMotivationalMessage = () => {
     if (budgetSurplus > dailyBudget) {
-      return "Fantastico! Stai risparmiando molto! 🎉";
+      return "Stai risparmiando molto. Ottimo!";
     } else if (budgetSurplus > 0) {
-      return "Ottimo lavoro! Continua così! 👍";
+      return "Stai risparmiando. Continua così.";
     } else if (budgetSurplus === 0) {
-      return "Perfetto equilibrio! ⚖️";
+      return "Equilibrio perfetto.";
     } else {
-      return "Attenzione al budget di oggi! ⚠️";
+      return "Attenzione al budget di oggi.";
     }
   };
 
   return (
     <div style={{ 
-      background: `linear-gradient(180deg, ${theme.card} 0%, ${theme.background} 50%, ${theme.background} 100%)`,
-      fontFamily: 'Inter, sans-serif',
-      padding: '20px',
-      borderRadius: '12px',
+      background: theme.background,
+      fontFamily: '"Inter", system-ui, sans-serif',
+      padding: '32px 24px',
       minHeight: '100vh',
-      position: 'relative'
+      maxWidth: '428px',
+      margin: '0 auto',
+      color: theme.text,
+      position: 'relative',
+      paddingBottom: '100px'
     }}>
       {/* Savings Overlay */}
       <SavingsOverlay isOpen={showSavingsOverlay} onClose={() => setShowSavingsOverlay(false)} />
 
       {/* Header con pulsante risparmi e saldo mensile */}
       <motion.div 
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
         style={{
-          padding: '16px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          marginBottom: '40px'
         }}
       >
         <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => setShowSavingsOverlay(true)}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            padding: '10px 16px',
-            backgroundColor: theme.primary,
-            color: 'white',
-            border: 'none',
-            borderRadius: '14px',
-            boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+            padding: '12px 16px',
+            backgroundColor: theme.card,
+            color: theme.text,
+            border: `1px solid ${theme.border}`,
+            borderRadius: '12px',
             cursor: 'pointer'
           }}
         >
-          <PiggyBank size={20} />
+          <PiggyBank size={20} color={theme.accent} />
           <div style={{ textAlign: 'left' }}>
-            <p style={{ fontSize: '12px', opacity: 0.9 }}>Risparmi</p>
+            <p style={{ fontSize: '12px', color: theme.textSecondary }}>Risparmi</p>
             <p style={{ fontWeight: '600', fontSize: '16px' }}>€ {totalSavings.toFixed(2).replace('.', ',')}</p>
           </div>
         </motion.button>
@@ -244,250 +216,199 @@ const MinimalistDashboard = () => {
           <p style={{ fontSize: '12px', color: theme.textSecondary }}>Saldo mensile</p>
           <p style={{ 
             fontSize: '18px', 
-            fontWeight: '700', 
-            color: monthlyBalance >= 0 ? theme.secondary : theme.danger 
+            fontWeight: '600', 
+            color: monthlyBalance >= 0 ? theme.primary : theme.negative
           }}>
             € {monthlyBalance.toFixed(2).replace('.', ',')}
           </p>
         </div>
       </motion.div>
 
-      {/* Titolo principale - importo grande */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
+      {/* Info prossimo stipendio - versione minimal */}
+      {nextPaydayDate && daysUntilPayday !== null && (
+        <motion.div 
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          style={{
+            marginBottom: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px'
+          }}
+        >
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '10px',
+            backgroundColor: theme.card,
+            border: `1px solid ${theme.border}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Calendar size={20} color={theme.accent} />
+          </div>
+          
+          <div>
+            <p style={{ 
+              fontWeight: '600', 
+              color: theme.text,
+              fontSize: '15px'
+            }}>
+              {daysUntilPayday} giorni al prossimo stipendio
+            </p>
+            <p style={{ 
+              fontSize: '13px', 
+              color: theme.textSecondary
+            }}>
+              {new Date(nextPaydayDate).toLocaleDateString('it-IT', { 
+                weekday: 'long', 
+                day: 'numeric', 
+                month: 'short' 
+              })}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Importo principale */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
         style={{
-          textAlign: 'center',
-          padding: '0 16px',
-          marginBottom: '16px'
+          marginBottom: '40px',
+          backgroundColor: theme.card,
+          padding: '24px',
+          borderRadius: '16px',
+          border: `1px solid ${theme.border}`
         }}
       >
+        <p style={{
+          fontSize: '14px',
+          fontWeight: '500',
+          color: theme.textSecondary,
+          marginBottom: '12px',
+          textAlign: 'center'
+        }}>
+          Budget disponibile oggi
+        </p>
+        
         <motion.p
           key={budgetSurplus}
-          initial={{ scale: 0.5, opacity: 0 }}
+          initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           style={{
-            fontSize: '48px',
+            fontSize: '52px',
             fontWeight: '700',
-            color: theme.primary,
-            marginBottom: '8px'
+            color: budgetSurplus >= 0 ? theme.primary : theme.negative,
+            marginBottom: '8px',
+            textAlign: 'center'
           }}
         >
-          {budgetSurplus >= 0 ? '' : '-'}€ {Math.abs(budgetSurplus).toFixed(2).replace('.', ',')}
+          €&nbsp;{Math.abs(budgetSurplus).toFixed(2).replace('.', ',')}
         </motion.p>
-        <motion.p
-          animate={{ opacity: [0.6, 1, 0.6] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          style={{
-            fontSize: '14px',
-            fontWeight: '500',
-            color: theme.primary
-          }}
-        >
+        
+        <div style={{
+          height: '4px',
+          width: '40px',
+          backgroundColor: theme.accent,
+          margin: '0 auto 12px auto',
+          borderRadius: '2px'
+        }}></div>
+        
+        <p style={{
+          fontSize: '14px',
+          fontWeight: '500',
+          color: budgetSurplus >= 0 ? theme.positive : theme.negative,
+          textAlign: 'center'
+        }}>
           {getMotivationalMessage()}
-        </motion.p>
+        </p>
       </motion.div>
 
-      {/* Budget Items in versione minimalista */}
-      <motion.div
+      {/* Budget per i prossimi giorni */}
+      <motion.p 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
+        transition={{ duration: 0.3, delay: 0.3 }}
+        style={{
+          fontSize: '14px',
+          fontWeight: '500',
+          color: theme.textSecondary,
+          marginBottom: '16px'
+        }}
+      >
+        Previsione budget
+      </motion.p>
+      
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.4 }}
         style={{
           display: 'flex',
-          justifyContent: 'space-around',
-          paddingTop: '40px',
-          marginBottom: '40px',
-          backgroundColor: 'transparent'
+          justifyContent: 'space-between',
+          gap: '16px',
+          marginBottom: '40px'
         }}
       >
         {[budgetSurplus, tomorrowBudget, afterTomorrowBudget].map((amount, index) => (
-          <div key={index} style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            position: 'relative',
-            width: '120px'
-          }}>
-            {/* Giorno della settimana */}
-            <p style={{ 
-              fontSize: '16px', 
-              fontWeight: '500', 
-              color: theme.primary,
-              marginBottom: '6px',
-              position: 'relative',
-              zIndex: 1,
-              opacity: 1
+          <motion.div 
+            key={index}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.4 + (index * 0.1) }}
+            style={{
+              flex: 1,
+              padding: '20px 12px',
+              backgroundColor: theme.card,
+              borderRadius: '12px',
+              border: index === 0 ? `1px solid ${theme.accent}` : `1px solid ${theme.border}`,
+              textAlign: 'center'
+            }}
+          >
+            <p style={{
+              fontSize: '13px',
+              fontWeight: '500',
+              color: theme.textSecondary,
+              marginBottom: '8px'
             }}>
               {days[index]}
             </p>
             
-            {/* Importo - con virgola e decimali */}
-            <motion.p
-              key={amount}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              style={{ 
-                fontSize: '16px', 
-                fontWeight: '600', 
-                color: theme.primary,
-                textAlign: 'center',
-                marginBottom: '6px'
-              }}
-            >
-              {Math.abs(amount).toFixed(2).replace('.', ',')}
-            </motion.p>
-            
-            {/* Elemento visivo: barre in crescita */}
-            <div style={{
-              display: 'flex',
-              gap: '5px',
-              height: '40px',
-              alignItems: 'flex-end',
-              position: 'relative',
-              zIndex: 1
+            <p style={{
+              fontSize: '18px',
+              fontWeight: '600',
+              color: index === 0 ? theme.accent : theme.text
             }}>
-              {Array.from({ length: 4 + index }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ height: 0 }}
-                  animate={{ 
-                    height: `${6 + (i+1) * 4.5}px`,
-                    scaleY: [1, 1.1, 0.9, 1]
-                  }}
-                  transition={{ 
-                    delay: (index * 0.3) + (i * 0.1),
-                    duration: 0.4,
-                    type: 'spring',
-                    stiffness: 400,
-                    damping: 25,
-                    scaleY: {
-                      repeat: Infinity,
-                      repeatType: 'reverse',
-                      duration: 2 + Math.random(),
-                      delay: i * 0.2
-                    }
-                  }}
-                  style={{
-                    width: '6px',
-                    backgroundColor: `${theme.primary}${85 - i*8}`,
-                    borderRadius: '3px'
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+              € {Math.abs(amount).toFixed(2).replace('.', ',')}
+            </p>
+          </motion.div>
         ))}
       </motion.div>
 
-      {/* Info prossimo stipendio */}
-      {nextPaydayDate && daysUntilPayday !== null && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          style={{
-            margin: '16px',
-            padding: '16px',
-            borderRadius: '16px',
-            backgroundColor: `${theme.primary}10`,
-            border: `1px solid ${theme.primary}20`
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Calendar size={20} style={{ color: theme.primary }} />
-              <div>
-                <p style={{ fontWeight: '500', color: theme.text }}>
-                  Prossimo stipendio
-                </p>
-                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                  {new Date(nextPaydayDate).toLocaleDateString('it-IT', { 
-                    weekday: 'long', 
-                    day: 'numeric', 
-                    month: 'short' 
-                  })}
-                </p>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '24px', fontWeight: '700', color: theme.primary }}>
-                {daysUntilPayday}
-              </p>
-              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                {daysUntilPayday === 1 ? 'giorno' : 'giorni'}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Indicatore spese future */}
-      {dailyFutureExpenses > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4 }}
-          style={{
-            margin: '16px',
-            padding: '16px',
-            borderRadius: '16px',
-            backgroundColor: `${theme.warning}10`,
-            border: `1px solid ${theme.warning}20`
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <Receipt size={20} style={{ color: theme.warning }} />
-              <div>
-                <p style={{ fontWeight: '500', color: theme.text }}>
-                  Accantonamento spese future
-                </p>
-                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                  Sottratto automaticamente dal budget
-                </p>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '20px', fontWeight: '700', color: theme.warning }}>
-                € {dailyFutureExpenses.toFixed(2).replace('.', ',')}
-              </p>
-              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                al giorno
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Fixed Action Buttons */}
+      {/* Pulsanti di azione minimalisti */}
       <motion.div
-        initial={{ y: 100 }}
-        animate={{ y: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
         style={{
           position: 'fixed',
-          bottom: '90px',
+          bottom: '32px',
           left: '0',
           right: '0',
-          padding: '0 16px',
+          padding: '0 24px',
           zIndex: 20,
           maxWidth: '428px',
           margin: '0 auto'
         }}
       >
-        <div style={{ 
-          display: 'flex', 
-          gap: '12px' 
+        <div style={{
+          display: 'flex',
+          gap: '12px'
         }}>
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -495,16 +416,16 @@ const MinimalistDashboard = () => {
             style={{
               flex: 1,
               height: '56px',
-              borderRadius: '16px',
+              borderRadius: '12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: 'white',
-              fontWeight: '600',
-              fontSize: '16px',
+              fontWeight: '500',
+              fontSize: '15px',
               border: 'none',
-              background: `linear-gradient(135deg, ${theme.secondary} 0%, ${theme.secondary}CC 100%)`,
-              boxShadow: `0 4px 12px ${theme.secondary}40`
+              backgroundColor: theme.positive,
+              cursor: 'pointer'
             }}
             onClick={() => {
               setTransactionType('income');
@@ -512,7 +433,7 @@ const MinimalistDashboard = () => {
               setShowAddTransaction(true);
             }}
           >
-            <Plus size={22} style={{ marginRight: '8px' }} />
+            <Plus size={20} style={{ marginRight: '8px' }} />
             Entrata
           </motion.button>
 
@@ -522,16 +443,16 @@ const MinimalistDashboard = () => {
             style={{
               flex: 1,
               height: '56px',
-              borderRadius: '16px',
+              borderRadius: '12px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: 'white',
-              fontWeight: '600',
-              fontSize: '16px',
+              fontWeight: '500',
+              fontSize: '15px',
               border: 'none',
-              background: `linear-gradient(135deg, ${theme.danger} 0%, ${theme.danger}CC 100%)`,
-              boxShadow: `0 4px 12px ${theme.danger}40`
+              backgroundColor: theme.negative,
+              cursor: 'pointer'
             }}
             onClick={() => {
               setTransactionType('expense');
@@ -539,7 +460,7 @@ const MinimalistDashboard = () => {
               setShowAddTransaction(true);
             }}
           >
-            <Minus size={22} style={{ marginRight: '8px' }} />
+            <Minus size={20} style={{ marginRight: '8px' }} />
             Spesa
           </motion.button>
         </div>
@@ -569,7 +490,7 @@ const MinimalistDashboard = () => {
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 500 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 400 }}
               style={{
                 position: 'fixed',
                 bottom: 0,
@@ -582,8 +503,8 @@ const MinimalistDashboard = () => {
             >
               <div style={{
                 backgroundColor: theme.card,
-                borderTopLeftRadius: '32px',
-                borderTopRightRadius: '32px',
+                borderTopLeftRadius: '24px',
+                borderTopRightRadius: '24px',
                 height: '85vh',
                 display: 'flex',
                 flexDirection: 'column',
@@ -591,21 +512,21 @@ const MinimalistDashboard = () => {
               }}>
                 {/* Header con pulsante Salva */}
                 <div style={{ 
-                  padding: '16px 20px',
+                  padding: '20px 24px',
                   borderBottom: `1px solid ${theme.border}`
                 }}>
                   {/* Handle bar */}
                   <div style={{ 
                     display: 'flex', 
                     justifyContent: 'center',
-                    marginBottom: '12px'
+                    marginBottom: '16px'
                   }}>
                     <div 
                       style={{ 
-                        width: '48px',
-                        height: '5px',
+                        width: '40px',
+                        height: '4px',
                         backgroundColor: theme.border,
-                        borderRadius: '3px',
+                        borderRadius: '2px',
                         cursor: 'pointer'
                       }}
                       onClick={() => setShowAddTransaction(false)}
@@ -617,7 +538,7 @@ const MinimalistDashboard = () => {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '12px'
+                    marginBottom: '16px'
                   }}>
                     <button
                       onClick={() => setShowAddTransaction(false)}
@@ -626,7 +547,7 @@ const MinimalistDashboard = () => {
                         backgroundColor: 'transparent',
                         border: 'none',
                         color: theme.textSecondary,
-                        fontSize: '16px',
+                        fontSize: '15px',
                         cursor: 'pointer'
                       }}
                     >
@@ -634,7 +555,7 @@ const MinimalistDashboard = () => {
                     </button>
 
                     <h2 style={{
-                      fontSize: '17px',
+                      fontSize: '16px',
                       fontWeight: '600',
                       color: theme.text
                     }}>
@@ -647,13 +568,13 @@ const MinimalistDashboard = () => {
                       style={{
                         padding: '8px 16px',
                         backgroundColor: newTransaction.amount && parseFloat(newTransaction.amount) > 0
-                          ? (transactionType === 'expense' ? theme.danger : theme.secondary)
+                          ? (transactionType === 'expense' ? theme.negative : theme.positive)
                           : theme.border,
                         border: 'none',
                         borderRadius: '8px',
                         color: 'white',
-                        fontSize: '16px',
-                        fontWeight: '600',
+                        fontSize: '15px',
+                        fontWeight: '500',
                         cursor: newTransaction.amount && parseFloat(newTransaction.amount) > 0 ? 'pointer' : 'not-allowed',
                         opacity: newTransaction.amount && parseFloat(newTransaction.amount) > 0 ? 1 : 0.5,
                         transition: 'all 0.2s ease'
@@ -667,7 +588,7 @@ const MinimalistDashboard = () => {
                   <div style={{
                     display: 'flex',
                     backgroundColor: theme.background,
-                    borderRadius: '12px',
+                    borderRadius: '8px',
                     padding: '4px'
                   }}>
                     <button
@@ -678,11 +599,11 @@ const MinimalistDashboard = () => {
                       style={{
                         flex: 1,
                         padding: '8px',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         border: 'none',
                         backgroundColor: transactionType === 'expense' ? theme.card : 'transparent',
-                        color: transactionType === 'expense' ? theme.danger : theme.textSecondary,
-                        fontWeight: '600',
+                        color: transactionType === 'expense' ? theme.negative : theme.textSecondary,
+                        fontWeight: '500',
                         fontSize: '14px',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -698,11 +619,11 @@ const MinimalistDashboard = () => {
                       style={{
                         flex: 1,
                         padding: '8px',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         border: 'none',
                         backgroundColor: transactionType === 'income' ? theme.card : 'transparent',
-                        color: transactionType === 'income' ? theme.secondary : theme.textSecondary,
-                        fontWeight: '600',
+                        color: transactionType === 'income' ? theme.positive : theme.textSecondary,
+                        fontWeight: '500',
                         fontSize: '14px',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -717,25 +638,25 @@ const MinimalistDashboard = () => {
                 <div style={{
                   flex: 1,
                   overflowY: 'auto',
-                  padding: '16px',
+                  padding: '24px',
                   paddingBottom: '32px'
                 }}>
                   {/* Importo Input con formattazione automatica */}
                   <div style={{ 
-                    marginBottom: '24px'
+                    marginBottom: '32px'
                   }}>
                     <div style={{
                       backgroundColor: theme.background,
-                      borderRadius: '20px',
-                      padding: '20px',
+                      borderRadius: '16px',
+                      padding: '24px',
                       textAlign: 'center'
                     }}>
                       <label style={{
                         display: 'block',
-                        fontSize: '13px',
+                        fontSize: '14px',
                         fontWeight: '500',
                         color: theme.textSecondary,
-                        marginBottom: '12px'
+                        marginBottom: '16px'
                       }}>
                         Importo
                       </label>
@@ -745,12 +666,12 @@ const MinimalistDashboard = () => {
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '4px',
-                        marginBottom: '12px'
+                        marginBottom: '16px'
                       }}>
                         <span style={{
-                          fontSize: '36px',
-                          fontWeight: '700',
-                          color: transactionType === 'expense' ? theme.danger : theme.secondary
+                          fontSize: '32px',
+                          fontWeight: '600',
+                          color: transactionType === 'expense' ? theme.negative : theme.positive
                         }}>
                           €
                         </span>
@@ -777,12 +698,12 @@ const MinimalistDashboard = () => {
                             backgroundColor: 'transparent',
                             border: 'none',
                             outline: 'none',
-                            fontSize: '36px',
-                            fontWeight: '700',
+                            fontSize: '32px',
+                            fontWeight: '600',
                             color: theme.text,
-                            width: '180px',
+                            width: '160px',
                             textAlign: 'left',
-                            caretColor: transactionType === 'expense' ? theme.danger : theme.secondary
+                            caretColor: transactionType === 'expense' ? theme.negative : theme.positive
                           }}
                           autoFocus
                         />
@@ -803,7 +724,7 @@ const MinimalistDashboard = () => {
                           fontSize: '14px',
                           color: theme.textSecondary,
                           padding: '8px',
-                          caretColor: theme.primary
+                          caretColor: theme.accent
                         }}
                       />
                     </div>
@@ -816,7 +737,7 @@ const MinimalistDashboard = () => {
                       fontSize: '14px',
                       fontWeight: '500',
                       color: theme.textSecondary,
-                      marginBottom: '12px',
+                      marginBottom: '16px',
                       paddingLeft: '4px'
                     }}>
                       Seleziona categoria
@@ -827,30 +748,9 @@ const MinimalistDashboard = () => {
                       maxHeight: '300px',
                       overflowY: 'auto',
                       overflowX: 'hidden',
-                      paddingRight: '8px',
-                      WebkitOverflowScrolling: 'touch',
-                      scrollbarWidth: 'thin',
-                      scrollbarColor: `${theme.textSecondary} ${theme.background}`
+                      paddingRight: '8px'
                     }}>
-                      <style>{`
-                        .categories-scroll::-webkit-scrollbar {
-                          width: 6px;
-                        }
-                        .categories-scroll::-webkit-scrollbar-track {
-                          background: ${theme.background};
-                          border-radius: 3px;
-                        }
-                        .categories-scroll::-webkit-scrollbar-thumb {
-                          background: ${theme.textSecondary};
-                          border-radius: 3px;
-                        }
-                        .categories-scroll::-webkit-scrollbar-thumb:hover {
-                          background: ${theme.text};
-                        }
-                      `}</style>
-                      
                       <div 
-                        className="categories-scroll"
                         style={{
                           display: 'grid',
                           gridTemplateColumns: 'repeat(2, 1fr)',
@@ -870,24 +770,24 @@ const MinimalistDashboard = () => {
                                 display: 'flex',
                                 alignItems: 'center',
                                 padding: '16px',
-                                borderRadius: '16px',
+                                borderRadius: '12px',
                                 border: 'none',
                                 backgroundColor: parseInt(newTransaction.categoryId) === category.id 
-                                  ? `${category.color}20` 
-                                  : theme.background,
+                                  ? `${theme.background}` 
+                                  : theme.card,
                                 cursor: 'pointer',
                                 transition: 'all 0.2s ease',
-                                borderWidth: '2px',
+                                borderWidth: '1px',
                                 borderStyle: 'solid',
                                 borderColor: parseInt(newTransaction.categoryId) === category.id 
-                                  ? category.color 
-                                  : 'transparent',
+                                  ? (transactionType === 'expense' ? theme.negative : theme.positive)
+                                  : theme.border,
                                 gap: '12px',
-                                minHeight: '72px'
+                                minHeight: '64px'
                               }}
                             >
                               <div style={{
-                                fontSize: '28px',
+                                fontSize: '24px',
                                 width: '36px',
                                 height: '36px',
                                 display: 'flex',
@@ -911,33 +811,6 @@ const MinimalistDashboard = () => {
                           ))}
                       </div>
                     </div>
-                    
-                    {/* Indicatore di scroll */}
-                    {categories.filter(cat => transactionType === 'expense' ? cat.id <= 20 : cat.id >= 21).length > 6 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
-                        style={{
-                          textAlign: 'center',
-                          marginTop: '8px',
-                          fontSize: '12px',
-                          color: theme.textSecondary,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <motion.div
-                          animate={{ y: [0, 5, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity }}
-                        >
-                          ↓
-                        </motion.div>
-                        Scorri per vedere più categorie
-                      </motion.div>
-                    )}
                   </div>
                 </div>
               </div>
