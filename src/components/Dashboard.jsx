@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Minus, PiggyBank, Calendar, Receipt, X, TrendingUp, TrendingDown, Flame } from 'lucide-react';
+import { Plus, Minus, PiggyBank, Calendar, Receipt, X } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 import SavingsOverlay from './SavingsOverlay';
 
@@ -21,7 +21,6 @@ const MinimalistDashboard = () => {
     totalSavings,
     fixedExpenses,
     savingsPercentage,
-    streak,
     transactions
   } = useContext(AppContext);
 
@@ -241,35 +240,15 @@ const MinimalistDashboard = () => {
           </div>
         </motion.button>
         
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          {streak > 0 && (
-            <motion.div 
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                marginRight: '12px'
-              }}
-            >
-              <Flame size={16} style={{ color: theme.danger, marginRight: '4px' }} />
-              <span style={{ fontSize: '14px', fontWeight: '600', color: theme.danger }}>
-                {streak} giorni
-              </span>
-            </motion.div>
-          )}
-          
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '12px', color: theme.textSecondary }}>Saldo mensile</p>
-            <p style={{ 
-              fontSize: '18px', 
-              fontWeight: '700', 
-              color: monthlyBalance >= 0 ? theme.secondary : theme.danger 
-            }}>
-              € {monthlyBalance.toFixed(2).replace('.', ',')}
-            </p>
-          </div>
+        <div style={{ textAlign: 'right' }}>
+          <p style={{ fontSize: '12px', color: theme.textSecondary }}>Saldo mensile</p>
+          <p style={{ 
+            fontSize: '18px', 
+            fontWeight: '700', 
+            color: monthlyBalance >= 0 ? theme.secondary : theme.danger 
+          }}>
+            € {monthlyBalance.toFixed(2).replace('.', ',')}
+          </p>
         </div>
       </motion.div>
 
@@ -318,8 +297,8 @@ const MinimalistDashboard = () => {
         style={{
           display: 'flex',
           justifyContent: 'space-around',
-          paddingTop: '10px',
-          marginBottom: '20px',
+          paddingTop: '40px',
+          marginBottom: '40px',
           backgroundColor: 'transparent'
         }}
       >
