@@ -152,8 +152,9 @@ const UltraMinimalistDashboard = () => {
       fontFamily: 'Inter, sans-serif',
       padding: '20px',
       borderRadius: '12px',
-      minHeight: '100vh',
-      position: 'relative'
+      height: '100vh',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
       {/* Savings Overlay */}
       <SavingsOverlay isOpen={showSavingsOverlay} onClose={() => setShowSavingsOverlay(false)} />
@@ -216,12 +217,15 @@ const UltraMinimalistDashboard = () => {
         </motion.button>
       </div>
 
+      {/* Spazio vuoto prima dell'importo principale */}
+      <div style={{ height: '120px' }}></div>
+      
       {/* Titolo principale - importo grande */}
       <div
         style={{
           textAlign: 'center',
           padding: '0 16px',
-          marginBottom: '60px'
+          marginBottom: '120px'  // Aumentato da 60px a 120px
         }}
       >
         <motion.p
@@ -251,12 +255,15 @@ const UltraMinimalistDashboard = () => {
         </motion.p>
       </div>
 
+      {/* Spazio extra per abbassare ulteriormente le barre */}
+      <div style={{ height: '80px' }}></div>
+      
       {/* Budget Items in versione minimalista */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-around',
-          paddingTop: '40px',
+          paddingTop: '60px',  // Aumentato da 40px a 60px
           marginBottom: '20px',
           backgroundColor: 'transparent'
         }}
@@ -335,7 +342,7 @@ const UltraMinimalistDashboard = () => {
       </div>
 
       {/* Spazio dove erano le sezioni rimosse */}
-      <div style={{ marginBottom: '80px' }}></div>
+      <div style={{ marginBottom: '0' }}></div>
 
       {/* Fixed Action Button con menu */}
       <motion.div
@@ -344,8 +351,8 @@ const UltraMinimalistDashboard = () => {
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         style={{
           position: 'fixed',
-          bottom: '80px',
-          right: '20px',
+          bottom: '110px',
+          right: '30px',
           zIndex: 30
         }}
       >
@@ -353,10 +360,10 @@ const UltraMinimalistDashboard = () => {
         <AnimatePresence>
           {showActionMenu && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 0 }}
-              animate={{ opacity: 1, scale: 1, y: -100 }}
-              exit={{ opacity: 0, scale: 0.8, y: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              initial={{ opacity: 0, scale: 0.95, y: 0 }}
+              animate={{ opacity: 1, scale: 1, y: -60 }}
+              exit={{ opacity: 0, scale: 0.95, y: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 35 }}
               style={{
                 position: 'absolute',
                 bottom: '0',
@@ -383,9 +390,9 @@ const UltraMinimalistDashboard = () => {
               
               {/* Pulsante Entrata */}
               <motion.div
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
+                transition={{ delay: 0.05 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -437,9 +444,9 @@ const UltraMinimalistDashboard = () => {
               
               {/* Pulsante Spesa */}
               <motion.div
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
+                transition={{ delay: 0.1 }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -525,7 +532,7 @@ const UltraMinimalistDashboard = () => {
           <>
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
+              animate={{ opacity: 0.3 }}
               exit={{ opacity: 0 }}
               style={{
                 position: 'fixed',
@@ -541,9 +548,9 @@ const UltraMinimalistDashboard = () => {
 
             <motion.div
               initial={{ y: '100%' }}
-              animate={{ y: 0 }}
+              animate={{ y: '20%' }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 500 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 400 }}
               style={{
                 position: 'fixed',
                 bottom: 0,
@@ -551,14 +558,15 @@ const UltraMinimalistDashboard = () => {
                 right: 0,
                 zIndex: 50,
                 maxWidth: '428px',
-                margin: '0 auto'
+                margin: '0 auto',
+                height: '80%'
               }}
             >
               <div style={{
                 backgroundColor: theme.card,
                 borderTopLeftRadius: '32px',
                 borderTopRightRadius: '32px',
-                height: '85vh',
+                height: '80%',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden'
