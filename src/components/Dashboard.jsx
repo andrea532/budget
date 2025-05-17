@@ -158,9 +158,20 @@ const UltraMinimalistDashboard = () => {
     }
   };
 
+  // Determina lo sfondo in base al saldo
+  const getDashboardBackground = () => {
+    if (isNegativeBudget) {
+      // Sfondo rosso quando il saldo è negativo
+      return `linear-gradient(180deg, ${theme.danger}40 0%, ${theme.danger}20 50%, ${theme.danger}10 100%)`;
+    } else {
+      // Sfondo standard quando il saldo è positivo
+      return `linear-gradient(180deg, ${theme.card} 0%, ${theme.background} 50%, ${theme.background} 100%)`;
+    }
+  };
+
   return (
     <div style={{ 
-      background: `linear-gradient(180deg, ${theme.card} 0%, ${theme.background} 50%, ${theme.background} 100%)`,
+      background: getDashboardBackground(),
       fontFamily: 'Inter, sans-serif',
       padding: '20px',
       borderRadius: '12px',
@@ -171,7 +182,8 @@ const UltraMinimalistDashboard = () => {
       right: 0,
       bottom: 0,
       overflow: 'hidden',
-      touchAction: 'none'
+      touchAction: 'none',
+      transition: 'background 0.5s ease' // Aggiunta animazione alla transizione
     }}>
       {/* Savings Overlay */}
       <SavingsOverlay isOpen={showSavingsOverlay} onClose={() => setShowSavingsOverlay(false)} />
