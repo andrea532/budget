@@ -9,6 +9,9 @@ import {
   Calendar,
   Calculator,
   AlertCircle,
+  ChevronRight,
+  X,
+  Check,
 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
@@ -24,6 +27,9 @@ const FutureExpensesPage = () => {
 
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [expenseToDelete, setExpenseToDelete] = useState(null);
+  const [addExpenseStep, setAddExpenseStep] = useState('details'); // 'category' o 'details'
   const [newExpense, setNewExpense] = useState({
     name: '',
     amount: '',
@@ -80,21 +86,29 @@ const FutureExpensesPage = () => {
     }, 0);
   };
 
+  // Formattazione importo in stile bancario
+  const formatAmount = (value) => {
+    if (!value) return '';
+    const numValue = parseInt(value, 10);
+    const formatted = (numValue / 100).toFixed(2);
+    return formatted.replace('.', ',');
+  };
+
   // Handlers
   const handleAddExpense = () => {
     if (
       !newExpense.name ||
       !newExpense.amount ||
       !newExpense.dueDate ||
-      isNaN(parseFloat(newExpense.amount)) ||
-      parseFloat(newExpense.amount) <= 0
+      isNaN(parseInt(newExpense.amount, 10)) ||
+      parseInt(newExpense.amount, 10) <= 0
     ) {
       return;
     }
 
     const expense = {
       ...newExpense,
-      amount: parseFloat(newExpense.amount),
+      amount: parseInt(newExpense.amount, 10) / 100,
       categoryId: parseInt(newExpense.categoryId),
     };
 
@@ -113,22 +127,33 @@ const FutureExpensesPage = () => {
       description: '',
     });
     setShowAddExpense(false);
+    setAddExpenseStep('details');
   };
 
   const handleEditExpense = (expense) => {
     setNewExpense({
       name: expense.name,
-      amount: expense.amount.toString(),
+      amount: Math.round(expense.amount * 100).toString(),
       dueDate: expense.dueDate,
       categoryId: expense.categoryId,
       description: expense.description || '',
     });
     setEditingExpenseId(expense.id);
+    setAddExpenseStep('details');
     setShowAddExpense(true);
   };
 
   const handleDeleteExpense = (id) => {
     deleteFutureExpense(id);
+    setShowDeleteConfirm(false);
+    setExpenseToDelete(null);
+    setEditingExpenseId(null);
+    setShowAddExpense(false);
+  };
+
+  const confirmDelete = (id) => {
+    setExpenseToDelete(id);
+    setShowDeleteConfirm(true);
   };
 
   return (
@@ -341,6 +366,7 @@ const FutureExpensesPage = () => {
                 description: '',
               });
               setEditingExpenseId(null);
+              setAddExpenseStep('details');
               setShowAddExpense(!showAddExpense);
             }}
             style={{
@@ -360,188 +386,566 @@ const FutureExpensesPage = () => {
           </motion.button>
         </div>
 
-        {/* Form aggiunta/modifica spesa */}
+        {/* Bottom Sheet per aggiungere/modificare spesa */}
         <AnimatePresence>
           {showAddExpense && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              style={{
-                overflow: 'hidden',
-                marginBottom: '24px',
-              }}
-            >
-              <div
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.3 }}
+                exit={{ opacity: 0 }}
                 style={{
-                  padding: '20px',
-                  borderRadius: '16px',
-                  backgroundColor: theme.background,
-                  border: `1px solid ${theme.border}`,
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'black',
+                  zIndex: 40
+                }}
+                onClick={() => setShowAddExpense(false)}
+              />
+
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: '20%' }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                style={{
+                  position: 'fixed',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  zIndex: 50,
+                  maxWidth: '428px',
+                  margin: '0 auto',
+                  height: '80%'
                 }}
               >
-                <div
+                <div style={{
+                  backgroundColor: theme.card,
+                  borderTopLeftRadius: '32px',
+                  borderTopRightRadius: '32px',
+                  height: '80%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ 
+                    padding: '16px 20px',
+                    borderBottom: `1px solid ${theme.border}`
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'center',
+                      marginBottom: '12px'
+                    }}>
+                      <div 
+                        style={{ 
+                          width: '48px',
+                          height: '5px',
+                          backgroundColor: theme.border,
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+                          if (addExpenseStep === 'category') {
+                            setAddExpenseStep('details');
+                          } else {
+                            setShowAddExpense(false);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '12px'
+                    }}>
+                      <button
+                        onClick={() => {
+                          if (addExpenseStep === 'category') {
+                            setAddExpenseStep('details');
+                          } else {
+                            setShowAddExpense(false);
+                          }
+                        }}
+                        style={{
+                          padding: '8px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: theme.textSecondary,
+                          fontSize: '16px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {addExpenseStep === 'category' ? 'Indietro' : 'Annulla'}
+                      </button>
+
+                      <h2 style={{
+                        fontSize: '17px',
+                        fontWeight: '600',
+                        color: theme.text
+                      }}>
+                        {editingExpenseId 
+                          ? 'Modifica spesa futura' 
+                          : 'Aggiungi spesa futura'}
+                      </h2>
+
+                      {addExpenseStep === 'details' ? (
+                        <button
+                          onClick={handleAddExpense}
+                          disabled={!newExpense.name || !newExpense.amount || !newExpense.dueDate || parseInt(newExpense.amount, 10) <= 0}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: newExpense.name && newExpense.amount && newExpense.dueDate && parseInt(newExpense.amount, 10) > 0
+                              ? theme.primary
+                              : theme.border,
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '16px',
+                            fontWeight: '600',
+                            cursor: newExpense.name && newExpense.amount && newExpense.dueDate && parseInt(newExpense.amount, 10) > 0 ? 'pointer' : 'not-allowed',
+                            opacity: newExpense.name && newExpense.amount && newExpense.dueDate && parseInt(newExpense.amount, 10) > 0 ? 1 : 0.5,
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          {editingExpenseId ? 'Aggiorna' : 'Salva'}
+                        </button>
+                      ) : (
+                        <div style={{ width: '64px' }}></div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Pulsante elimina per modalità modifica - SPOSTATO QUI IN ALTO */}
+                  {editingExpenseId && addExpenseStep === 'details' && (
+                    <div style={{ 
+                      padding: '8px 16px',
+                      borderBottom: `1px solid ${theme.border}`,
+                      backgroundColor: `${theme.danger}08`
+                    }}>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => confirmDelete(editingExpenseId)}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          borderRadius: '12px',
+                          backgroundColor: `${theme.danger}15`,
+                          color: theme.danger,
+                          fontWeight: '600',
+                          border: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          fontSize: '16px'
+                        }}
+                      >
+                        <Trash2 size={20} />
+                        Elimina spesa futura
+                      </motion.button>
+                    </div>
+                  )}
+
+                  <div style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '16px',
+                    paddingBottom: '32px'
+                  }}>
+                    {addExpenseStep === 'category' && (
+                      <div>
+                        <div style={{
+                          maxHeight: '500px',
+                          overflowY: 'auto',
+                          overflowX: 'hidden',
+                          paddingRight: '8px'
+                        }}>
+                          <div 
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(2, 1fr)',
+                              gap: '16px',
+                              paddingBottom: '8px'
+                            }}
+                          >
+                            {categories
+                              .filter(cat => cat.id <= 20)
+                              .map(category => (
+                                <motion.button
+                                  key={category.id}
+                                  whileHover={{ scale: 1.03 }}
+                                  whileTap={{ scale: 0.97 }}
+                                  onClick={() => {
+                                    setNewExpense({...newExpense, categoryId: category.id});
+                                    setAddExpenseStep('details');
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '20px 10px',
+                                    borderRadius: '16px',
+                                    border: 'none',
+                                    backgroundColor: theme.background,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                                    gap: '10px',
+                                    minHeight: '100px'
+                                  }}
+                                >
+                                  <div style={{
+                                    fontSize: '32px',
+                                    width: '48px',
+                                    height: '48px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: category.color,
+                                    backgroundColor: `${category.color}15`,
+                                    borderRadius: '12px',
+                                    marginBottom: '6px'
+                                  }}>
+                                    {category.icon}
+                                  </div>
+                                  <span style={{
+                                    fontSize: '14px',
+                                    fontWeight: '500',
+                                    color: theme.text,
+                                    textAlign: 'center'
+                                  }}>
+                                    {category.name}
+                                  </span>
+                                </motion.button>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {addExpenseStep === 'details' && (
+                      <>
+                        {/* Categoria selezionata */}
+                        {newExpense.categoryId && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexDirection: 'column',
+                            marginBottom: '24px'
+                          }}>
+                            {categories.filter(c => c.id === parseInt(newExpense.categoryId)).map(category => (
+                              <div key={category.id} style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                <motion.div 
+                                  whileHover={{ scale: 1.05 }}
+                                  onClick={() => setAddExpenseStep('category')}
+                                  style={{
+                                    fontSize: '36px',
+                                    width: '64px',
+                                    height: '64px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: category.color,
+                                    backgroundColor: `${category.color}15`,
+                                    borderRadius: '16px',
+                                    marginBottom: '4px',
+                                    cursor: 'pointer'
+                                  }}>
+                                  {category.icon}
+                                </motion.div>
+                                <span style={{
+                                  fontSize: '16px',
+                                  fontWeight: '600',
+                                  color: theme.text
+                                }}>
+                                  {category.name}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Form di dettagli */}
+                        <div style={{ 
+                          marginBottom: '24px'
+                        }}>
+                          <div style={{
+                            backgroundColor: theme.background,
+                            borderRadius: '20px',
+                            padding: '20px',
+                            marginBottom: '20px'
+                          }}>
+                            <label style={{
+                              display: 'block',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              color: theme.textSecondary,
+                              marginBottom: '8px'
+                            }}>
+                              Nome spesa
+                            </label>
+                            
+                            <input
+                              type="text"
+                              value={newExpense.name}
+                              onChange={(e) => setNewExpense({...newExpense, name: e.target.value})}
+                              placeholder="Es. Bollo auto, Assicurazione"
+                              style={{
+                                width: '100%',
+                                backgroundColor: 'white',
+                                border: `1px solid ${theme.border}`,
+                                borderRadius: '12px',
+                                padding: '14px',
+                                fontSize: '16px',
+                                color: '#1A2151',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                          
+                          <div style={{
+                            backgroundColor: theme.background,
+                            borderRadius: '20px',
+                            padding: '20px',
+                            marginBottom: '20px',
+                            textAlign: 'center'
+                          }}>
+                            <label style={{
+                              display: 'block',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              color: theme.textSecondary,
+                              marginBottom: '12px'
+                            }}>
+                              Importo
+                            </label>
+                            
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px',
+                              marginBottom: '12px'
+                            }}>
+                              <span style={{
+                                fontSize: '36px',
+                                fontWeight: '700',
+                                color: theme.primary
+                              }}>
+                                €
+                              </span>
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                value={formatAmount(newExpense.amount)}
+                                onChange={(e) => {
+                                  let value = e.target.value.replace(/[^0-9]/g, '');
+                                  
+                                  if (value === '') {
+                                    setNewExpense({...newExpense, amount: ''});
+                                    return;
+                                  }
+                                  
+                                  if (value.length > 8) {
+                                    value = value.slice(0, 8);
+                                  }
+                                  
+                                  setNewExpense({...newExpense, amount: value});
+                                }}
+                                placeholder="0,00"
+                                style={{
+                                  backgroundColor: 'transparent',
+                                  border: 'none',
+                                  outline: 'none',
+                                  fontSize: '36px',
+                                  fontWeight: '700',
+                                  color: theme.text,
+                                  width: '180px',
+                                  textAlign: 'left',
+                                  caretColor: theme.primary
+                                }}
+                              />
+                            </div>
+                          </div>
+                          
+                          <div style={{
+                            backgroundColor: theme.background,
+                            borderRadius: '20px',
+                            padding: '20px',
+                            marginBottom: '20px'
+                          }}>
+                            <label style={{
+                              display: 'block',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              color: theme.textSecondary,
+                              marginBottom: '8px'
+                            }}>
+                              Data scadenza
+                            </label>
+                            
+                            <input
+                              type="date"
+                              value={newExpense.dueDate}
+                              onChange={(e) => setNewExpense({...newExpense, dueDate: e.target.value})}
+                              style={{
+                                width: '100%',
+                                backgroundColor: 'white',
+                                border: `1px solid ${theme.border}`,
+                                borderRadius: '12px',
+                                padding: '14px',
+                                fontSize: '16px',
+                                color: '#1A2151',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                          
+                          <div style={{
+                            backgroundColor: theme.background,
+                            borderRadius: '20px',
+                            padding: '20px'
+                          }}>
+                            <label style={{
+                              display: 'block',
+                              fontSize: '13px',
+                              fontWeight: '500',
+                              color: theme.textSecondary,
+                              marginBottom: '8px'
+                            }}>
+                              Descrizione (opzionale)
+                            </label>
+                            
+                            <input
+                              type="text"
+                              value={newExpense.description}
+                              onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                              placeholder="Note aggiuntive sulla spesa"
+                              style={{
+                                width: '100%',
+                                backgroundColor: 'white',
+                                border: `1px solid ${theme.border}`,
+                                borderRadius: '12px',
+                                padding: '14px',
+                                fontSize: '16px',
+                                color: '#1A2151',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Conferma Eliminazione */}
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 60,
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                style={{
+                  backgroundColor: theme.card,
+                  padding: '24px',
+                  borderRadius: '20px',
+                  maxWidth: '300px',
+                  width: '90%',
+                  textAlign: 'center',
+                }}
+              >
+                <p
                   style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '16px',
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: theme.text,
+                    marginBottom: '16px',
                   }}
                 >
-                  <input
-                    type="text"
-                    placeholder="Nome spesa (es. Bollo auto, Assicurazione)"
-                    value={newExpense.name}
-                    onChange={(e) =>
-                      setNewExpense({ ...newExpense, name: e.target.value })
-                    }
-                    style={{
-                      padding: '16px',
-                      borderRadius: '12px',
-                      border: `1px solid ${theme.border}`,
-                      backgroundColor: 'white',
-                      color: '#1A2151', // MODIFICATO: colore testo fisso
-                      fontSize: '16px',
-                    }}
-                  />
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div>
-                      <label
-                        style={{
-                          fontSize: '14px',
-                          color: theme.textSecondary,
-                          display: 'block',
-                          marginBottom: '8px',
-                        }}
-                      >
-                        Importo totale (€)
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0.00"
-                        value={newExpense.amount}
-                        onChange={(e) =>
-                          setNewExpense({ ...newExpense, amount: e.target.value })
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '16px',
-                          borderRadius: '12px',
-                          border: `1px solid ${theme.border}`,
-                          backgroundColor: 'white',
-                          color: '#1A2151', // MODIFICATO: colore testo fisso
-                          fontSize: '16px',
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        style={{
-                          fontSize: '14px',
-                          color: theme.textSecondary,
-                          display: 'block',
-                          marginBottom: '8px',
-                        }}
-                      >
-                        Data scadenza
-                      </label>
-                      <input
-                        type="date"
-                        value={newExpense.dueDate}
-                        onChange={(e) =>
-                          setNewExpense({ ...newExpense, dueDate: e.target.value })
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '16px',
-                          borderRadius: '12px',
-                          border: `1px solid ${theme.border}`,
-                          backgroundColor: 'white',
-                          color: '#1A2151', // MODIFICATO: colore testo fisso
-                          fontSize: '16px',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label
-                      style={{
-                        fontSize: '14px',
-                        color: theme.textSecondary,
-                        display: 'block',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      Categoria
-                    </label>
-                    <select
-                      value={newExpense.categoryId}
-                      onChange={(e) =>
-                        setNewExpense({
-                          ...newExpense,
-                          categoryId: parseInt(e.target.value),
-                        })
-                      }
-                      style={{
-                        width: '100%',
-                        padding: '16px',
-                        borderRadius: '12px',
-                        border: `1px solid ${theme.border}`,
-                        backgroundColor: 'white',
-                        color: '#1A2151', // MODIFICATO: colore testo fisso
-                        fontSize: '16px',
-                      }}
-                    >
-                      {categories
-                        .filter(cat => cat.id <= 20)
-                        .map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.icon} {category.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-
-                  <input
-                    type="text"
-                    placeholder="Descrizione (opzionale)"
-                    value={newExpense.description}
-                    onChange={(e) =>
-                      setNewExpense({ ...newExpense, description: e.target.value })
-                    }
-                    style={{
-                      padding: '16px',
-                      borderRadius: '12px',
-                      border: `1px solid ${theme.border}`,
-                      backgroundColor: 'white',
-                      color: '#1A2151', // MODIFICATO: colore testo fisso
-                      fontSize: '16px',
-                    }}
-                  />
-
+                  Sei sicuro?
+                </p>
+                <p
+                  style={{
+                    fontSize: '14px',
+                    color: theme.textSecondary,
+                    marginBottom: '24px',
+                  }}
+                >
+                  Questa azione non può essere annullata.
+                </p>
+                <div style={{ display: 'flex', gap: '12px' }}>
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleAddExpense}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleDeleteExpense(expenseToDelete)}
                     style={{
-                      padding: '16px',
+                      flex: 1,
+                      padding: '12px',
                       borderRadius: '12px',
-                      background: `linear-gradient(135deg, ${theme.primary} 0%, #5A85FF 100%)`,
+                      backgroundColor: theme.danger,
                       color: 'white',
                       fontWeight: '600',
-                      fontSize: '16px',
                       border: 'none',
                       cursor: 'pointer',
-                      marginTop: '8px',
                     }}
                   >
-                    {editingExpenseId ? 'Aggiorna spesa' : 'Aggiungi spesa'}
+                    Elimina
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '12px',
+                      backgroundColor: theme.background,
+                      color: theme.textSecondary,
+                      fontWeight: '600',
+                      border: `1px solid ${theme.border}`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Annulla
                   </motion.button>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -666,7 +1070,7 @@ const FutureExpensesPage = () => {
                     <motion.button
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => handleDeleteExpense(expense.id)}
+                      onClick={() => confirmDelete(expense.id)}
                       style={{
                         width: '32px',
                         height: '32px',
