@@ -783,7 +783,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                 >
                   {transaction.description || 'Nessuna descrizione'}
                 </p>
-                <p style={{ fontSize: '12px', color: theme.textSecondary }}>
+                <p style={{ fontSize: '16px', color: theme.textSecondary }}>
                   {formattedDate}
                 </p>
               </div>
