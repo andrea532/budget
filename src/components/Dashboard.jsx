@@ -153,8 +153,13 @@ const UltraMinimalistDashboard = () => {
       padding: '20px',
       borderRadius: '12px',
       height: '100vh',
-      position: 'relative',
-      overflow: 'hidden'
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      overflow: 'hidden',
+      touchAction: 'none'
     }}>
       {/* Savings Overlay */}
       <SavingsOverlay isOpen={showSavingsOverlay} onClose={() => setShowSavingsOverlay(false)} />
@@ -162,7 +167,7 @@ const UltraMinimalistDashboard = () => {
       {/* Header con pulsante risparmi e saldo mensile */}
       <div 
         style={{
-          padding: '16px',
+          padding: '12px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
@@ -218,14 +223,14 @@ const UltraMinimalistDashboard = () => {
       </div>
 
       {/* Spazio vuoto prima dell'importo principale */}
-      <div style={{ height: '120px' }}></div>
+      <div style={{ height: '60px' }}></div>
       
       {/* Titolo principale - importo grande */}
       <div
         style={{
           textAlign: 'center',
           padding: '0 16px',
-          marginBottom: '120px'  // Aumentato da 60px a 120px
+          marginBottom: '80px'
         }}
       >
         <motion.p
@@ -256,14 +261,14 @@ const UltraMinimalistDashboard = () => {
       </div>
 
       {/* Spazio extra per abbassare ulteriormente le barre */}
-      <div style={{ height: '80px' }}></div>
+      <div style={{ height: '40px' }}></div>
       
       {/* Budget Items in versione minimalista */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-around',
-          paddingTop: '60px',  // Aumentato da 40px a 60px
+          paddingTop: '40px',
           marginBottom: '20px',
           backgroundColor: 'transparent'
         }}
@@ -340,9 +345,6 @@ const UltraMinimalistDashboard = () => {
           </motion.div>
         ))}
       </div>
-
-      {/* Spazio dove erano le sezioni rimosse */}
-      <div style={{ marginBottom: '0' }}></div>
 
       {/* Fixed Action Button con menu */}
       <motion.div
