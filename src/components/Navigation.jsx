@@ -33,7 +33,7 @@ const Navigation = () => {
         style={{
           display: 'flex',
           justifyContent: 'space-around',
-          padding: '8px 0',
+          padding: '12px 0',
           maxWidth: '428px',
           margin: '0 auto',
         }}
@@ -46,19 +46,34 @@ const Navigation = () => {
             style={{
               background: 'none',
               border: 'none',
-              padding: '8px 16px',
+              padding: '12px',
+              position: 'relative',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              gap: '4px',
+              justifyContent: 'center',
               color:
                 currentView === item.id ? theme?.primary : theme?.textSecondary,
               transition: 'all 0.3s ease',
             }}
           >
+            {currentView === item.id && (
+              <motion.div
+                layoutId="nav-indicator"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  width: '4px',
+                  height: '4px',
+                  borderRadius: '2px',
+                  backgroundColor: theme?.primary,
+                }}
+              />
+            )}
             <motion.div
               animate={{
-                scale: currentView === item.id ? 1.1 : 1,
+                scale: currentView === item.id ? 1.15 : 1,
                 color:
                   currentView === item.id
                     ? theme?.primary
@@ -66,11 +81,8 @@ const Navigation = () => {
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
-              <item.icon size={22} />
+              <item.icon size={28} />
             </motion.div>
-            <span style={{ fontSize: '12px', fontWeight: '500' }}>
-              {item.label}
-            </span>
           </motion.button>
         ))}
       </div>
