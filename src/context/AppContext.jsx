@@ -20,6 +20,70 @@ import {
 
 export const AppContext = createContext(null);
 
+// Definizione completa dei temi con colori di sfondo
+const THEMES = {
+  'blue': {
+    primary: '#4C6FFF',
+    secondary: '#2ECC71',
+    danger: '#FF5252',
+    warning: '#FFB74D',
+    background: '#ECF1FF',
+    card: '#FFFFFF',
+    darkBackground: '#1A1B21',
+    darkCard: '#25262E',
+  },
+  'forest': {
+    primary: '#2E7D32',
+    secondary: '#388E3C',
+    danger: '#D32F2F', 
+    warning: '#FFB74D',
+    background: '#EDFBEF',
+    card: '#FFFFFF',
+    darkBackground: '#1A2017',
+    darkCard: '#252E25',
+  },
+  'dark': {
+    primary: '#455A64',
+    secondary: '#607D8B',
+    danger: '#F44336',
+    warning: '#FFB74D',
+    background: '#ECEFF1',
+    card: '#FFFFFF',
+    darkBackground: '#1A1A1D',
+    darkCard: '#282831',
+  },
+  'purple': {
+    primary: '#9C27B0',
+    secondary: '#E91E63',
+    danger: '#FF5252',
+    warning: '#FFB74D',
+    background: '#F3E5F5',
+    card: '#FFFFFF',
+    darkBackground: '#22162B',
+    darkCard: '#341C42',
+  },
+  'pink': {
+    primary: '#E91E63',
+    secondary: '#FF4081',
+    danger: '#FF5252',
+    warning: '#FFB74D',
+    background: '#FCE4EC',
+    card: '#FFFFFF',
+    darkBackground: '#2A151E',
+    darkCard: '#3D1F2D',
+  },
+  'teal': {
+    primary: '#009688',
+    secondary: '#26A69A',
+    danger: '#F44336',
+    warning: '#FFB74D',
+    background: '#E0F2F1',
+    card: '#FFFFFF',
+    darkBackground: '#0F2A29',
+    darkCard: '#1A3D3A',
+  },
+};
+
 export const AppProvider = ({ children }) => {
   // Stati principali
   const [currentView, setCurrentView] = useState('dashboard');
@@ -73,18 +137,29 @@ export const AppProvider = ({ children }) => {
     notifications: true,
     darkMode: false,
     currency: 'EUR',
-    language: 'it'
+    language: 'it',
+    themeId: 'blue' // Default theme
   });
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Stato dei colori del tema (con valori predefiniti)
+  const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
+
+  // Aggiorna i colori del tema
+  const updateThemeColors = (themeId) => {
+    if (THEMES[themeId]) {
+      setActiveTheme(THEMES[themeId]);
+    }
+  };
 
   // Tema
   const theme = {
-    primary: '#4C6FFF',
-    secondary: '#2ECC71',
-    danger: '#FF5252',
-    warning: '#FFB74D',
-    background: userSettings.darkMode ? '#1A1B21' : '#F8FAFF',
-    card: userSettings.darkMode ? '#25262E' : '#FFFFFF',
+    primary: activeTheme.primary,
+    secondary: activeTheme.secondary,
+    danger: activeTheme.danger,
+    warning: activeTheme.warning,
+    background: userSettings.darkMode ? activeTheme.darkBackground : activeTheme.background,
+    card: userSettings.darkMode ? activeTheme.darkCard : activeTheme.card,
     text: userSettings.darkMode ? '#FFFFFF' : '#1A2151',
     textSecondary: userSettings.darkMode ? '#A0A3BD' : '#757F8C',
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
@@ -110,6 +185,14 @@ export const AppProvider = ({ children }) => {
           setSavingsPercentage(settings.savingsPercentage || 10);
           setStreak(settings.streak || 0);
           setAchievements(settings.achievements || []);
+          
+          // Imposta i colori del tema in base al themeId
+          if (settings.userSettings && settings.userSettings.themeId) {
+            const themeId = settings.userSettings.themeId;
+            if (THEMES[themeId]) {
+              setActiveTheme(THEMES[themeId]);
+            }
+          }
         }
         
         // Carica le transazioni
@@ -177,6 +260,13 @@ export const AppProvider = ({ children }) => {
     
     saveUserData();
   }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, streak, achievements, isLoading]);
+
+  // Aggiorna i colori del tema quando cambia themeId
+  useEffect(() => {
+    if (!isLoading && userSettings.themeId) {
+      updateThemeColors(userSettings.themeId);
+    }
+  }, [userSettings.themeId, isLoading]);
 
   // Calcola il totale giornaliero delle spese future da sottrarre
   const getDailyFutureExpenses = () => {
@@ -611,6 +701,8 @@ export const AppProvider = ({ children }) => {
       streak, 
       achievements, setAchievements,
       userSettings, setUserSettings,
+      updateThemeColors,
+      activeTheme,
 
       // FUNZIONI IMPORTANTI
       addTransaction, 
