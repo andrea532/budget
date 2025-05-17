@@ -921,24 +921,42 @@ const UltraMinimalistDashboard = () => {
                             />
                           </div>
 
-                          <input
-                            type="text"
-                            value={newTransaction.description}
-                            onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
-                            placeholder={transactionType === 'expense' ? "Cosa hai comprato?" : "Da dove arriva?"}
-                            style={{
-                              width: '100%',
-                              backgroundColor: 'transparent',
-                              border: 'none',
-                              borderBottom: `1px solid ${theme.border}`,
-                              outline: 'none',
-                              textAlign: 'center',
-                              fontSize: '14px',
-                              color: theme.textSecondary,
-                              padding: '8px',
-                              caretColor: theme.primary
-                            }}
-                          />
+                          
+
+<input
+  type="text"
+  value={newTransaction.description}
+  onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
+  placeholder={transactionType === 'expense' ? "Cosa hai comprato?" : "Da dove arriva?"}
+  style={{
+    width: '100%',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: `1px solid ${theme.border}`,
+    outline: 'none',
+    textAlign: 'center',
+    fontSize: '16px', // Aumentato a 16px (valore critico per prevenire lo zoom)
+    color: theme.textSecondary,
+    padding: '8px',
+    caretColor: theme.primary,
+    '-webkit-appearance': 'none', // Previene stili predefiniti del browser
+    '-moz-appearance': 'none',
+    'appearance': 'none',
+    'touch-action': 'manipulation' // Ottimizza il comportamento touch
+  }}
+  onFocus={(e) => {
+    // Previene lo zoom su focus
+    document.body.classList.add('prevent-zoom');
+  }}
+  onBlur={(e) => {
+    // Ripristina il comportamento normale
+    document.body.classList.remove('prevent-zoom');
+    // Se necessario, forza il ripristino dello zoom
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+    }, 100);
+  }}
+/>
                         </div>
                       </div>
                     </>
