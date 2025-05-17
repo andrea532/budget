@@ -523,7 +523,7 @@ const TransactionItem = ({ transaction, category, showActions = true }) => {
                           borderBottom: `1px solid ${theme.border}`,
                           outline: 'none',
                           textAlign: 'center',
-                          fontSize: '14px',
+                          fontSize: '16px',
                           color: theme.textSecondary,
                           padding: '8px',
                           caretColor: theme.primary
