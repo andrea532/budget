@@ -52,6 +52,18 @@ const UltraMinimalistDashboard = () => {
   const tomorrowBudget = dailyBudget + budgetSurplus;
   const afterTomorrowBudget = tomorrowBudget + dailyBudget;
   const daysUntilPayday = getDaysUntilPayday();
+  
+  // Controlla se il budget è in negativo per colorare tutti i numeri negativi
+  const isNegativeBudget = budgetSurplus < 0;
+
+  // Ottiene il colore appropriato per visualizzare un valore numerico
+  const getDisplayColor = (value) => {
+    if (value < 0) {
+      return theme.danger; // Sempre rosso per valori negativi
+    } else {
+      return theme.primary; // Default per valori positivi
+    }
+  };
 
   // Calcolo saldo mensile
   const calculateMonthlyBalance = () => {
@@ -241,7 +253,7 @@ const UltraMinimalistDashboard = () => {
           style={{
             fontSize: '48px',
             fontWeight: '700',
-            color: theme.primary,
+            color: getDisplayColor(budgetSurplus),
             marginBottom: '8px'
           }}
         >
@@ -253,7 +265,7 @@ const UltraMinimalistDashboard = () => {
           style={{
             fontSize: '14px',
             fontWeight: '500',
-            color: theme.primary
+            color: getDisplayColor(budgetSurplus)
           }}
         >
           {getMotivationalMessage()}
@@ -291,7 +303,7 @@ const UltraMinimalistDashboard = () => {
             <p style={{ 
               fontSize: '16px', 
               fontWeight: '500', 
-              color: theme.primary,
+              color: isNegativeBudget && amount < 0 ? theme.danger : theme.primary,
               marginBottom: '6px',
               position: 'relative',
               zIndex: 1,
@@ -305,12 +317,12 @@ const UltraMinimalistDashboard = () => {
               style={{ 
                 fontSize: '16px', 
                 fontWeight: '600', 
-                color: theme.primary,
+                color: isNegativeBudget && amount < 0 ? theme.danger : theme.primary,
                 textAlign: 'center',
                 marginBottom: '6px'
               }}
             >
-              {Math.abs(amount).toFixed(2).replace('.', ',')}
+              {amount < 0 ? '-' : ''}€ {Math.abs(amount).toFixed(2).replace('.', ',')}
             </p>
             
             {/* Elemento visivo: barre */}
@@ -336,7 +348,9 @@ const UltraMinimalistDashboard = () => {
                   }}
                   style={{
                     width: '6px',
-                    backgroundColor: `${theme.primary}${85 - i*8}`,
+                    backgroundColor: isNegativeBudget && amount < 0 
+                      ? `${theme.danger}${85 - i*8}` 
+                      : `${theme.primary}${85 - i*8}`,
                     borderRadius: '3px'
                   }}
                 />
