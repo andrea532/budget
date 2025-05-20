@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Target, TrendingUp, ArrowRight, Check } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
-const SavingsSetup = () => {
+const SavingsSetup = ({ isInitialSetup, onComplete }) => {
   const {
     savingsPercentage,
     setSavingsPercentage,
@@ -11,6 +11,7 @@ const SavingsSetup = () => {
     theme,
     setCurrentView,
     addToSavings,
+    completeSetup,
   } = useContext(AppContext);
 
   const [percentage, setPercentage] = useState(savingsPercentage);
@@ -51,8 +52,18 @@ const SavingsSetup = () => {
       }
       
       setShowSuccess(true);
+      
       setTimeout(() => {
-        setCurrentView('dashboard');
+        if (isInitialSetup && onComplete) {
+          onComplete({ savings: percentage });
+          
+          // Completa la configurazione iniziale solo se in modalità setup iniziale
+          if (isInitialSetup) {
+            completeSetup();
+          }
+        } else {
+          setCurrentView('dashboard');
+        }
       }, 800);
     }
   };
@@ -75,10 +86,11 @@ const SavingsSetup = () => {
           textAlign: 'center',
           padding: '16px',
           marginBottom: '16px',
+          marginTop: isInitialSetup ? '40px' : '0',
         }}
       >
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: theme.text }}>
-          Risparmio
+          {isInitialSetup ? 'Ultimo passo: i tuoi risparmi' : 'Risparmio'}
         </h2>
         <p
           style={{
@@ -369,55 +381,57 @@ const SavingsSetup = () => {
             cursor: 'pointer',
           }}
         >
-          Salva e vai alla Dashboard
+          {isInitialSetup ? 'Completa configurazione' : 'Salva e vai alla Dashboard'}
         </motion.button>
 
-        {/* Navigation */}
-        <motion.div
-          variants={itemVariants}
-          style={{
-            marginTop: '24px',
-            paddingTop: '24px',
-            borderTop: `1px solid ${theme.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            onClick={() => setCurrentView('expenses')}
+        {/* Navigation - mostra solo se non è la configurazione iniziale */}
+        {!isInitialSetup && (
+          <motion.div
+            variants={itemVariants}
             style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.textSecondary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-            }}
-          >
-            Indietro
-          </button>
-
-          <button
-            onClick={() => setCurrentView('goals')}
-            style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.primary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
+              marginTop: '24px',
+              paddingTop: '24px',
+              borderTop: `1px solid ${theme.border}`,
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: '4px',
             }}
           >
-            Obiettivi
-            <ArrowRight size={16} />
-          </button>
-        </motion.div>
+            <button
+              onClick={() => setCurrentView('expenses')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.textSecondary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+              }}
+            >
+              Indietro
+            </button>
+
+            <button
+              onClick={() => setCurrentView('goals')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.primary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              Obiettivi
+              <ArrowRight size={16} />
+            </button>
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );
