@@ -138,7 +138,8 @@ export const AppProvider = ({ children }) => {
     darkMode: false,
     currency: 'EUR',
     language: 'it',
-    themeId: 'blue' // Default theme
+    themeId: 'blue', // Default theme
+    setupCompleted: false // Aggiunta questa proprietà per tenere traccia se la configurazione iniziale è stata completata
   });
   const [isLoading, setIsLoading] = useState(true);
   
@@ -163,6 +164,14 @@ export const AppProvider = ({ children }) => {
     text: userSettings.darkMode ? '#FFFFFF' : '#1A2151',
     textSecondary: userSettings.darkMode ? '#A0A3BD' : '#757F8C',
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
+  };
+
+  // Funzione per completare il setup iniziale
+  const completeSetup = () => {
+    setUserSettings(prev => ({
+      ...prev,
+      setupCompleted: true
+    }));
   };
 
   // Inizializzazione del database e caricamento dati
@@ -703,6 +712,7 @@ export const AppProvider = ({ children }) => {
       userSettings, setUserSettings,
       updateThemeColors,
       activeTheme,
+      completeSetup, // Funzione per completare il setup iniziale
 
       // FUNZIONI IMPORTANTI
       addTransaction, 
