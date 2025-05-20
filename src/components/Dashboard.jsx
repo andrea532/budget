@@ -17,7 +17,8 @@ const UltraMinimalistDashboard = () => {
     fixedExpenses,
     savingsPercentage,
     transactions,
-    totalSavings
+    totalSavings,
+    futureExpenses
   } = useContext(AppContext);
 
   // Stati per l'interfaccia
@@ -65,14 +66,19 @@ const UltraMinimalistDashboard = () => {
     }
   };
 
-  // Calcolo saldo mensile
+  // Calcolo saldo mensile CORRETTO
   const calculateMonthlyBalance = () => {
+    // Calcolo spese fisse totali
     const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    
+    // Calcolo importo risparmi
     const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
     
+    // Ottiene il mese e l'anno correnti
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
+    // Calcola le spese mensili (transazioni di tipo "expense")
     const monthlyExpenses = transactions
       .filter(t => {
         const tDate = new Date(t.date);
@@ -82,7 +88,8 @@ const UltraMinimalistDashboard = () => {
       })
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const monthlyIncome_ = transactions
+    // Calcola le entrate extra (transazioni di tipo "income")
+    const monthlyExtraIncome = transactions
       .filter(t => {
         const tDate = new Date(t.date);
         return t.type === 'income' && 
@@ -91,7 +98,14 @@ const UltraMinimalistDashboard = () => {
       })
       .reduce((sum, t) => sum + t.amount, 0);
 
-    return monthlyIncome + monthlyIncome_ - totalFixedExpenses - savingsAmount - monthlyExpenses;
+    // Durante la configurazione iniziale (quando non ci sono transazioni)
+    // dovrebbe semplicemente essere: reddito - spese fisse - risparmi
+    if (transactions.length === 0 && futureExpenses.length === 0) {
+      return monthlyIncome - totalFixedExpenses - savingsAmount;
+    }
+
+    // Altrimenti, include anche le transazioni
+    return monthlyIncome + monthlyExtraIncome - totalFixedExpenses - savingsAmount - monthlyExpenses;
   };
 
   const monthlyBalance = calculateMonthlyBalance();
