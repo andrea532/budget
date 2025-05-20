@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, TrendingUp, Minus, Plus, Trash2 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
-const ExpensesSetup = () => {
+const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
   const {
     fixedExpenses,
     categories,
@@ -73,6 +73,15 @@ const ExpensesSetup = () => {
     0
   );
 
+  // Gestisci il completamento del setup
+  const handleContinue = () => {
+    if (isInitialSetup && onComplete) {
+      onComplete(fixedExpenses);
+    } else {
+      setCurrentView('savings');
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -89,10 +98,11 @@ const ExpensesSetup = () => {
           textAlign: 'center',
           padding: '16px',
           marginBottom: '16px',
+          marginTop: isInitialSetup ? '40px' : '0',
         }}
       >
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: theme.text }}>
-          Spese fisse mensili
+          {isInitialSetup ? 'Aggiungi le tue spese fisse' : 'Spese fisse mensili'}
         </h2>
         <p
           style={{
@@ -555,7 +565,7 @@ const ExpensesSetup = () => {
           variants={itemVariants}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => setCurrentView('savings')}
+          onClick={handleContinue}
           style={{
             width: '100%',
             padding: '16px',
@@ -569,55 +579,57 @@ const ExpensesSetup = () => {
             marginTop: '32px',
           }}
         >
-          Continua
+          {isInitialSetup ? 'Continua' : 'Salva e continua'}
         </motion.button>
 
-        {/* Navigation */}
-        <motion.div
-          variants={itemVariants}
-          style={{
-            marginTop: '24px',
-            paddingTop: '24px',
-            borderTop: `1px solid ${theme.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            onClick={() => setCurrentView('income')}
+        {/* Navigation - mostra solo se non è la configurazione iniziale */}
+        {!isInitialSetup && (
+          <motion.div
+            variants={itemVariants}
             style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.textSecondary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-            }}
-          >
-            Indietro
-          </button>
-
-          <button
-            onClick={() => setCurrentView('savings')}
-            style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.primary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
+              marginTop: '24px',
+              paddingTop: '24px',
+              borderTop: `1px solid ${theme.border}`,
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: '4px',
             }}
           >
-            Risparmio
-            <TrendingUp size={16} />
-          </button>
-        </motion.div>
+            <button
+              onClick={() => setCurrentView('income')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.textSecondary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+              }}
+            >
+              Indietro
+            </button>
+
+            <button
+              onClick={() => setCurrentView('savings')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.primary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              Risparmio
+              <TrendingUp size={16} />
+            </button>
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );
