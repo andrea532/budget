@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
-const IncomeSetup = () => {
+const IncomeSetup = ({ isInitialSetup, onComplete }) => {
   const {
     monthlyIncome,
     setMonthlyIncome,
@@ -24,7 +24,7 @@ const IncomeSetup = () => {
 
   const [income, setIncome] = useState(monthlyIncome ? monthlyIncome.toString() : '');
   const [selectedCycle, setSelectedCycle] = useState('monthly');
-  const [selectedDay, setSelectedDay] = useState(27);
+  const [selectedDay, setSelectedDay] = useState(lastPaydayDate ? new Date(lastPaydayDate).getDate() : 27);
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Cicli semplificati
@@ -83,8 +83,13 @@ const IncomeSetup = () => {
       }
 
       setShowSuccess(true);
+      
       setTimeout(() => {
-        setCurrentView('expenses');
+        if (isInitialSetup && onComplete) {
+          onComplete(parsedIncome);
+        } else {
+          setCurrentView('expenses');
+        }
       }, 800);
     }
   };
@@ -129,10 +134,11 @@ const IncomeSetup = () => {
           textAlign: 'center',
           padding: '16px',
           marginBottom: '16px',
+          marginTop: isInitialSetup ? '40px' : '0',
         }}
       >
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: theme.text }}>
-          Il tuo stipendio
+          {isInitialSetup ? 'Configura il tuo budget' : 'Il tuo stipendio'}
         </h2>
         <p
           style={{
@@ -141,7 +147,7 @@ const IncomeSetup = () => {
             marginTop: '4px',
           }}
         >
-          Quanto guadagni e quando ricevi lo stipendio
+          {isInitialSetup ? 'Iniziamo impostando il tuo stipendio mensile' : 'Quanto guadagni e quando ricevi lo stipendio'}
         </p>
       </motion.div>
 
@@ -423,55 +429,57 @@ const IncomeSetup = () => {
             transition: 'all 0.3s ease',
           }}
         >
-          Salva e continua
+          {isInitialSetup ? 'Continua' : 'Salva e continua'}
         </motion.button>
 
-        {/* Navigation */}
-        <motion.div
-          variants={itemVariants}
-          style={{
-            marginTop: '24px',
-            paddingTop: '24px',
-            borderTop: `1px solid ${theme.border}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <button
-            onClick={() => setCurrentView('dashboard')}
+        {/* Navigation - mostra solo se non è la configurazione iniziale */}
+        {!isInitialSetup && (
+          <motion.div
+            variants={itemVariants}
             style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.textSecondary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-            }}
-          >
-            Indietro
-          </button>
-
-          <button
-            onClick={() => setCurrentView('expenses')}
-            style={{
-              fontSize: '14px',
-              fontWeight: '500',
-              color: theme.primary,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
+              marginTop: '24px',
+              paddingTop: '24px',
+              borderTop: `1px solid ${theme.border}`,
               display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: '4px',
             }}
           >
-            Spese fisse
-            <TrendingUp size={16} />
-          </button>
-        </motion.div>
+            <button
+              onClick={() => setCurrentView('dashboard')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.textSecondary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+              }}
+            >
+              Indietro
+            </button>
+
+            <button
+              onClick={() => setCurrentView('expenses')}
+              style={{
+                fontSize: '14px',
+                fontWeight: '500',
+                color: theme.primary,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              Spese fisse
+              <TrendingUp size={16} />
+            </button>
+          </motion.div>
+        )}
       </motion.div>
     </motion.div>
   );
