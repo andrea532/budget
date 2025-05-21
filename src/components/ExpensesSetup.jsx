@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, TrendingUp, Minus, Plus, Trash2 } from 'lucide-react';
+import { Wallet, TrendingUp, Minus, Plus, Trash2, Calendar, Info } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
 const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
@@ -11,6 +11,11 @@ const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
     setCurrentView,
     addFixedExpense,
     deleteFixedExpense,
+    // Importiamo le date di pagamento dal contesto
+    lastPaydayDate,
+    nextPaydayDate,
+    monthlyIncome,
+    getDaysUntilPayday,
   } = useContext(AppContext);
 
   const [newExpense, setNewExpense] = useState({
@@ -19,6 +24,20 @@ const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
     categoryId: 1,
   });
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showPaymentInfo, setShowPaymentInfo] = useState(false);
+  
+  // Determina il tipo di ciclo di pagamento basandosi sulle date
+  const detectPaymentCycle = () => {
+    if (!lastPaydayDate || !nextPaydayDate) return 'mensile';
+    
+    const lastDate = new Date(lastPaydayDate);
+    const nextDate = new Date(nextPaydayDate);
+    const diffDays = Math.round((nextDate - lastDate) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 7) return 'settimanale';
+    if (diffDays <= 15) return 'bisettimanale';
+    return 'mensile';
+  };
 
   // Animazioni
   const containerVariants = {
@@ -72,6 +91,49 @@ const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
     (sum, expense) => sum + expense.amount,
     0
   );
+  
+  // Calcola l'impatto delle spese fisse sul budget mensile
+  const calculateExpenseImpact = () => {
+    if (monthlyIncome <= 0) return 0;
+    return (totalExpenses / monthlyIncome) * 100;
+  };
+
+  // Formatta la data in formato italiano
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/D';
+    
+    const date = new Date(dateString);
+    return date.toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  // Ottiene una descrizione del ciclo di pagamento attuale
+  const getPaymentInfo = () => {
+    if (!lastPaydayDate && !nextPaydayDate) {
+      return 'Nessun ciclo di pagamento configurato. Vai su "Stipendio" per configurarlo.';
+    }
+    
+    const cycleType = detectPaymentCycle();
+    const daysUntil = getDaysUntilPayday();
+    
+    let info = `Ciclo ${cycleType}`;
+    
+    if (lastPaydayDate) {
+      info += `\nUltimo pagamento: ${formatDate(lastPaydayDate)}`;
+    }
+    
+    if (nextPaydayDate) {
+      info += `\nProssimo pagamento: ${formatDate(nextPaydayDate)}`;
+      if (daysUntil !== null) {
+        info += ` (tra ${daysUntil} ${daysUntil === 1 ? 'giorno' : 'giorni'})`;
+      }
+    }
+    
+    return info;
+  };
 
   // Gestisci il completamento del setup
   const handleContinue = () => {
@@ -161,6 +223,108 @@ const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
           </motion.div>
         </motion.div>
 
+        {/* Informazioni sul ciclo di pagamento */}
+        <motion.div
+          variants={itemVariants}
+          style={{
+            padding: '16px',
+            borderRadius: '16px',
+            backgroundColor: `${theme.primary}15`,
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+          }}
+          onClick={() => setShowPaymentInfo(!showPaymentInfo)}
+        >
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>
+              Ciclo di pagamento
+            </p>
+            <p style={{ fontSize: '12px', color: theme.textSecondary }}>
+              Le spese fisse seguono il tuo ciclo stipendio
+            </p>
+          </div>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: `${theme.primary}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Calendar size={18} style={{ color: theme.primary }} />
+          </div>
+        </motion.div>
+
+        <AnimatePresence>
+          {showPaymentInfo && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              style={{
+                overflow: 'hidden',
+                marginBottom: '24px',
+                padding: '16px',
+                borderRadius: '16px',
+                backgroundColor: theme.background,
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <Info size={20} style={{ color: theme.primary }} />
+                <p style={{ fontSize: '14px', color: theme.text, fontWeight: '500' }}>
+                  Informazioni sul ciclo di pagamento
+                </p>
+              </div>
+              {getPaymentInfo().split('\n').map((line, index) => (
+                <p 
+                  key={index} 
+                  style={{
+                    fontSize: '14px', 
+                    color: theme.text,
+                    marginBottom: index < getPaymentInfo().split('\n').length - 1 ? '8px' : '0'
+                  }}
+                >
+                  {line}
+                </p>
+              ))}
+              
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                marginTop: '16px' 
+              }}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setCurrentView('income')}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    backgroundColor: theme.primary,
+                    color: 'white',
+                    border: 'none',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  Modifica <Calendar size={16} />
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Total Summary */}
         <motion.div
           variants={itemVariants}
@@ -193,6 +357,16 @@ const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
           >
             € {totalExpenses.toFixed(2)}
           </motion.p>
+          
+          {monthlyIncome > 0 && (
+            <p style={{ 
+              fontSize: '14px', 
+              color: theme.textSecondary,
+              marginTop: '8px'
+            }}>
+              {calculateExpenseImpact().toFixed(1)}% del tuo reddito mensile
+            </p>
+          )}
         </motion.div>
 
         {/* Add Button */}
