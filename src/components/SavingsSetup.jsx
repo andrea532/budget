@@ -1,27 +1,61 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, TrendingUp, ArrowRight, Check, Calendar, Info } from 'lucide-react';
+import { Wallet, TrendingUp, Minus, Plus, Trash2, Calendar, Info } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
-const SavingsSetup = ({ isInitialSetup, onComplete }) => {
+// Verifica se siamo in PWA
+const isPWA = () => {
+  return window.matchMedia('(display-mode: standalone)').matches || 
+         window.navigator.standalone || // Safari iOS
+         document.referrer.includes('android-app://');
+};
+
+const ExpensesSetup = ({ isInitialSetup, onComplete }) => {
   const {
-    savingsPercentage,
-    setSavingsPercentage,
-    monthlyIncome,
+    fixedExpenses,
+    categories,
     theme,
     setCurrentView,
-    addToSavings,
-    completeSetup,
-    // Stato e funzioni relative al ciclo di pagamento
-    paymentCycleType,
+    addFixedExpense,
+    deleteFixedExpense,
+    // Importiamo le date di pagamento dal contesto
     lastPaydayDate,
     nextPaydayDate,
-    getDaysUntilPayday
+    monthlyIncome,
+    getDaysUntilPayday,
+    saveAllSettings, // Utilizziamo questa funzione per forzare il salvataggio
   } = useContext(AppContext);
 
-  const [percentage, setPercentage] = useState(savingsPercentage);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [newExpense, setNewExpense] = useState({
+    name: '',
+    amount: '',
+    categoryId: 1,
+  });
+  const [showAddForm, setShowAddForm] = useState(false);
   const [showPaymentInfo, setShowPaymentInfo] = useState(false);
+  const [localExpenses, setLocalExpenses] = useState([]);
+  const [updatedExpenses, setUpdatedExpenses] = useState(false);
+  const [saveAttempted, setSaveAttempted] = useState(false);
+  
+  // Determina il tipo di ciclo di pagamento basandosi sulle date
+  const detectPaymentCycle = () => {
+    if (!lastPaydayDate || !nextPaydayDate) return 'mensile';
+    
+    const lastDate = new Date(lastPaydayDate);
+    const nextDate = new Date(nextPaydayDate);
+    const diffDays = Math.round((nextDate - lastDate) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 7) return 'settimanale';
+    if (diffDays <= 15) return 'bisettimanale';
+    return 'mensile';
+  };
+
+  // Sincronizza lo stato locale con le spese fisse del contesto
+  useEffect(() => {
+    if (fixedExpenses.length > 0 && !updatedExpenses) {
+      setLocalExpenses([...fixedExpenses]);
+    }
+  }, [fixedExpenses, updatedExpenses]);
 
   // Animazioni
   const containerVariants = {
@@ -47,59 +81,108 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     },
   };
 
-  const handleSave = () => {
-    if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
-      setSavingsPercentage(percentage);
+  const handleAddExpense = () => {
+    if (
+      !newExpense.name ||
+      !newExpense.amount ||
+      isNaN(parseFloat(newExpense.amount)) ||
+      parseFloat(newExpense.amount) <= 0
+    ) {
+      return;
+    }
+
+    // Prima creiamo una copia locale
+    const newExpenseObj = {
+      name: newExpense.name,
+      amount: parseFloat(newExpense.amount),
+      categoryId: parseInt(newExpense.categoryId),
+      // Aggiungi un ID temporaneo
+      id: Date.now(),
+    };
+
+    // Aggiorna lo stato locale immediatamente
+    setLocalExpenses(prev => [...prev, newExpenseObj]);
+    setUpdatedExpenses(true);
+
+    // Poi chiamiamo la funzione del contesto che salva nel DB
+    addFixedExpense({
+      name: newExpense.name,
+      amount: parseFloat(newExpense.amount),
+      categoryId: parseInt(newExpense.categoryId),
+    });
+
+    // Forza un salvataggio
+    setTimeout(() => {
+      saveAllSettings();
       
-      // Calcola e aggiungi automaticamente il risparmio mensile
-      const savingsAmount = calculateSavingAmount();
-      if (savingsAmount > 0) {
-        addToSavings(savingsAmount);
+      // Per PWA, effettua un secondo tentativo
+      if (isPWA()) {
+        setTimeout(() => {
+          console.log("Secondo tentativo di salvataggio in PWA (ExpensesSetup)");
+          saveAllSettings();
+        }, 1000);
       }
-      
-      setShowSuccess(true);
-      
-      setTimeout(() => {
-        if (isInitialSetup && onComplete) {
-          onComplete({ savings: percentage });
-          
-          // Completa la configurazione iniziale solo se in modalità setup iniziale
-          if (isInitialSetup) {
-            completeSetup();
-          }
-        } else {
-          setCurrentView('dashboard');
-        }
-      }, 800);
+    }, 300);
+
+    // Backup in localStorage
+    try {
+      const expensesJson = JSON.stringify([...localExpenses, newExpenseObj]);
+      localStorage.setItem('budget-fixed-expenses', expensesJson);
+    } catch (e) {
+      console.error("Errore nel backup localStorage delle spese fisse:", e);
     }
+
+    setNewExpense({
+      name: '',
+      amount: '',
+      categoryId: 1,
+    });
+    setShowAddForm(false);
+    setSaveAttempted(true);
   };
 
-  // Calcola l'importo di risparmio basato sul ciclo di pagamento
-  const calculateSavingAmount = () => {
-    const baseAmount = (monthlyIncome * percentage) / 100;
-    
-    // Per cicli non mensili, adattiamo l'importo
-    if (paymentCycleType === 'weekly') {
-      return baseAmount / 4; // Approssimazione settimanale (un mese = ~4 settimane)
-    } else if (paymentCycleType === 'biweekly') {
-      return baseAmount / 2; // Approssimazione bisettimanale (un mese = ~2 periodi di due settimane)
+  const handleDeleteExpense = (id) => {
+    // Aggiorna lo stato locale immediatamente 
+    setLocalExpenses(prev => prev.filter(expense => expense.id !== id));
+    setUpdatedExpenses(true);
+
+    // Poi chiamiamo la funzione del contesto che elimina dal DB
+    deleteFixedExpense(id);
+
+    // Forza un salvataggio
+    setTimeout(() => {
+      saveAllSettings();
+      
+      // Per PWA, effettua un secondo tentativo
+      if (isPWA()) {
+        setTimeout(() => {
+          console.log("Secondo tentativo di salvataggio in PWA dopo eliminazione");
+          saveAllSettings();
+        }, 1000);
+      }
+    }, 300);
+
+    // Backup in localStorage
+    try {
+      const updatedExpenses = localExpenses.filter(expense => expense.id !== id);
+      const expensesJson = JSON.stringify(updatedExpenses);
+      localStorage.setItem('budget-fixed-expenses', expensesJson);
+    } catch (e) {
+      console.error("Errore nel backup localStorage dopo eliminazione:", e);
     }
     
-    return baseAmount; // Ciclo mensile
+    setSaveAttempted(true);
   };
 
-  // Ottiene l'importo di risparmio per visualizzazione
-  const getSavingsAmount = () => {
-    const baseAmount = (monthlyIncome * percentage) / 100;
-    
-    // Restituisci il valore appropriato in base al ciclo
-    if (paymentCycleType === 'weekly') {
-      return baseAmount / 4; // ~1/4 del risparmio mensile ogni settimana
-    } else if (paymentCycleType === 'biweekly') {
-      return baseAmount / 2; // Metà del risparmio mensile ogni due settimane
-    }
-    
-    return baseAmount; // Importo mensile completo
+  const totalExpenses = localExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0
+  );
+  
+  // Calcola l'impatto delle spese fisse sul budget mensile
+  const calculateExpenseImpact = () => {
+    if (monthlyIncome <= 0) return 0;
+    return (totalExpenses / monthlyIncome) * 100;
   };
 
   // Formatta la data in formato italiano
@@ -114,26 +197,13 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     });
   };
 
-  // Ottiene la descrizione del ciclo di pagamento attuale
-  const getPaymentCycleDescription = () => {
-    let cycleLabel = 'Mensile';
-    
-    if (paymentCycleType === 'weekly') {
-      cycleLabel = 'Settimanale';
-    } else if (paymentCycleType === 'biweekly') {
-      cycleLabel = 'Ogni 15 giorni';
-    }
-    
-    return cycleLabel;
-  };
-
-  // Ottiene una descrizione del ciclo di pagamento e delle date
+  // Ottiene una descrizione del ciclo di pagamento attuale
   const getPaymentInfo = () => {
     if (!lastPaydayDate && !nextPaydayDate) {
       return 'Nessun ciclo di pagamento configurato. Vai su "Stipendio" per configurarlo.';
     }
     
-    const cycleType = getPaymentCycleDescription();
+    const cycleType = detectPaymentCycle();
     const daysUntil = getDaysUntilPayday();
     
     let info = `Ciclo ${cycleType}`;
@@ -151,16 +221,32 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     
     return info;
   };
-  
-  // Ottiene la dicitura del periodo per la visualizzazione
-  const getSavingPeriodLabel = () => {
-    switch(paymentCycleType) {
-      case 'weekly':
-        return 'RISPARMIO SETTIMANALE';
-      case 'biweekly':
-        return 'RISPARMIO BISETTIMANALE';
-      default:
-        return 'RISPARMIO MENSILE';
+
+  // Gestisci il completamento del setup
+  const handleContinue = () => {
+    // Forza un salvataggio finale prima di continuare
+    saveAllSettings();
+    
+    if (isInitialSetup && onComplete) {
+      // Backup in localStorage
+      try {
+        const expensesJson = JSON.stringify(localExpenses);
+        localStorage.setItem('budget-fixed-expenses', expensesJson);
+      } catch (e) {
+        console.error("Errore nel backup localStorage prima della continuazione:", e);
+      }
+      
+      onComplete(localExpenses);
+    } else {
+      // Assicurati che i dati siano salvati prima di cambiare vista
+      setTimeout(() => {
+        saveAllSettings();
+        
+        // Breve ritardo prima di cambiare vista
+        setTimeout(() => {
+          setCurrentView('savings');
+        }, 200);
+      }, isPWA() ? 500 : 200);
     }
   };
 
@@ -168,7 +254,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="savings-setup"
+      className="expenses-setup"
       style={{ paddingBottom: '100px' }}
     >
       {/* Header */}
@@ -184,7 +270,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
         }}
       >
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: theme.text }}>
-          {isInitialSetup ? 'Ultimo passo: i tuoi risparmi' : 'Risparmio'}
+          {isInitialSetup ? 'Aggiungi le tue spese fisse' : 'Spese fisse mensili'}
         </h2>
         <p
           style={{
@@ -193,7 +279,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             marginTop: '4px',
           }}
         >
-          Imposta i tuoi obiettivi finanziari
+          Aggiungi le spese che paghi regolarmente
         </p>
       </motion.div>
 
@@ -210,31 +296,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
         }}
       >
-        {/* Success Animation */}
-        {showSuccess && (
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: theme.secondary,
-              borderRadius: '50%',
-              width: '80px',
-              height: '80px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 100,
-            }}
-          >
-            <Check size={40} color="white" />
-          </motion.div>
-        )}
-
-        {/* Icon */}
+        {/* Icon and Total */}
         <motion.div
           variants={itemVariants}
           style={{
@@ -246,7 +308,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           <motion.div
             animate={{
               scale: [1, 1.1, 1],
-              rotate: [0, 10, -10, 0],
+              rotate: [0, -5, 5, 0],
             }}
             transition={{
               duration: 4,
@@ -257,13 +319,13 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               width: '80px',
               height: '80px',
               borderRadius: '50%',
-              background: `linear-gradient(135deg, ${theme.secondary}30 0%, ${theme.secondary}10 100%)`,
+              background: `linear-gradient(135deg, ${theme.danger}30 0%, ${theme.danger}10 100%)`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Target size={40} style={{ color: theme.secondary }} />
+            <Wallet size={40} style={{ color: theme.danger }} />
           </motion.div>
         </motion.div>
 
@@ -284,10 +346,10 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
         >
           <div>
             <p style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>
-              Ciclo di risparmio: {getPaymentCycleDescription()}
+              Ciclo di pagamento
             </p>
             <p style={{ fontSize: '12px', color: theme.textSecondary }}>
-              I risparmi si adattano al tuo ciclo di stipendio
+              Le spese fisse seguono il tuo ciclo stipendio
             </p>
           </div>
           <div
@@ -323,7 +385,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <Info size={20} style={{ color: theme.primary }} />
                 <p style={{ fontSize: '14px', color: theme.text, fontWeight: '500' }}>
-                  Informazioni sul ciclo di risparmio
+                  Informazioni sul ciclo di pagamento
                 </p>
               </div>
               {getPaymentInfo().split('\n').map((line, index) => (
@@ -362,139 +424,21 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                     gap: '8px'
                   }}
                 >
-                  Modifica ciclo <Calendar size={16} />
+                  Modifica <Calendar size={16} />
                 </motion.button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <motion.div
-          variants={itemVariants}
-          style={{ textAlign: 'center', marginBottom: '32px' }}
-        >
-          <h3
-            style={{
-              fontSize: '18px',
-              fontWeight: '600',
-              color: theme.text,
-              marginBottom: '8px',
-            }}
-          >
-            Risparmio {paymentCycleType === 'monthly' ? 'mensile' : 
-                      paymentCycleType === 'biweekly' ? 'bisettimanale' : 'settimanale'}
-          </h3>
-          <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-            Imposta la percentuale di entrate da risparmiare
-          </p>
-        </motion.div>
-
-        {/* Percentage Slider */}
-        <motion.div variants={itemVariants} style={{ marginBottom: '32px' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginBottom: '16px',
-            }}
-          >
-            <span style={{ fontSize: '14px', color: theme.textSecondary }}>
-              0%
-            </span>
-            <motion.span
-              key={percentage}
-              initial={{ scale: 0.5 }}
-              animate={{ scale: 1 }}
-              style={{
-                fontSize: '24px',
-                fontWeight: '700',
-                color: theme.secondary,
-              }}
-            >
-              {percentage}%
-            </motion.span>
-            <span style={{ fontSize: '14px', color: theme.textSecondary }}>
-              100%
-            </span>
-          </div>
-
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={percentage}
-            onChange={(e) => setPercentage(parseInt(e.target.value))}
-            style={{
-              width: '100%',
-              height: '8px',
-              borderRadius: '4px',
-              background: theme.border,
-              outline: 'none',
-              WebkitAppearance: 'none',
-              MozAppearance: 'none',
-              appearance: 'none',
-              marginBottom: '24px',
-            }}
-            className="savings-slider"
-          />
-
-          <style jsx>{`
-            .savings-slider::-webkit-slider-thumb {
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: ${theme.secondary};
-              cursor: pointer;
-              -webkit-appearance: none;
-              appearance: none;
-              box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
-            }
-
-            .savings-slider::-moz-range-thumb {
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: ${theme.secondary};
-              cursor: pointer;
-              border: none;
-              box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
-            }
-
-            .savings-slider::-webkit-slider-runnable-track {
-              background: linear-gradient(
-                to right,
-                ${theme.secondary} 0%,
-                ${theme.secondary} ${percentage}%,
-                ${theme.border} ${percentage}%,
-                ${theme.border} 100%
-              );
-              height: 8px;
-              border-radius: 4px;
-            }
-
-            .savings-slider::-moz-range-track {
-              background: linear-gradient(
-                to right,
-                ${theme.secondary} 0%,
-                ${theme.secondary} ${percentage}%,
-                ${theme.border} ${percentage}%,
-                ${theme.border} 100%
-              );
-              height: 8px;
-              border-radius: 4px;
-            }
-          `}</style>
-        </motion.div>
-
-        {/* Savings Amount Display */}
+        {/* Total Summary */}
         <motion.div
           variants={itemVariants}
           style={{
             padding: '20px',
             borderRadius: '16px',
-            backgroundColor: `${theme.secondary}15`,
-            marginBottom: '32px',
+            backgroundColor: `${theme.danger}15`,
+            marginBottom: '24px',
             textAlign: 'center',
           }}
         >
@@ -505,92 +449,419 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               marginBottom: '8px',
             }}
           >
-            {getSavingPeriodLabel()}
+            TOTALE SPESE FISSE
           </p>
           <motion.p
-            key={getSavingsAmount()}
+            key={totalExpenses}
             initial={{ scale: 0.5 }}
             animate={{ scale: 1 }}
             style={{
               fontSize: '32px',
               fontWeight: '700',
-              color: theme.secondary,
+              color: theme.danger,
             }}
           >
-            € {getSavingsAmount().toFixed(2)}
+            € {totalExpenses.toFixed(2)}
           </motion.p>
           
-          {paymentCycleType !== 'monthly' && (
-            <p
-              style={{
-                fontSize: '14px',
-                color: theme.textSecondary,
-                marginTop: '8px',
-              }}
-            >
-              (€ {((monthlyIncome * percentage) / 100).toFixed(2)} al mese)
+          {monthlyIncome > 0 && (
+            <p style={{ 
+              fontSize: '14px', 
+              color: theme.textSecondary,
+              marginTop: '8px'
+            }}>
+              {calculateExpenseImpact().toFixed(1)}% del tuo reddito mensile
             </p>
           )}
         </motion.div>
 
-        {/* Quick Presets */}
-        <motion.div variants={itemVariants} style={{ marginBottom: '32px' }}>
-          <p
+        {/* Add Button */}
+        <motion.div variants={itemVariants} style={{ marginBottom: '24' }}>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowAddForm(!showAddForm)}
             style={{
-              fontSize: '14px',
-              color: theme.textSecondary,
-              marginBottom: '12px',
+              width: '100%',
+              padding: '16px',
+              borderRadius: '16px',
+              background: `linear-gradient(135deg, ${theme.primary} 0%, #5A85FF 100%)`,
+              color: 'white',
+              fontSize: '16px',
+              fontWeight: '600',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              marginBottom: '24px',
             }}
           >
-            Suggerimenti:
-          </p>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {[5, 10, 15, 20, 30].map((preset) => (
-              <motion.button
-                key={preset}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setPercentage(preset)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '12px',
-                  backgroundColor:
-                    percentage === preset ? theme.secondary : theme.background,
-                  color: percentage === preset ? 'white' : theme.text,
-                  border: `1px solid ${
-                    percentage === preset ? theme.secondary : theme.border
-                  }`,
-                  fontWeight: '500',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                }}
-              >
-                {preset}%
-              </motion.button>
-            ))}
-          </div>
+            <Plus size={20} />
+            Aggiungi spesa fissa
+          </motion.button>
         </motion.div>
 
-        {/* Save Button */}
+        {/* Add Form */}
+        <AnimatePresence>
+          {showAddForm && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              style={{ overflow: 'hidden', marginBottom: '24px' }}
+            >
+              <div
+                style={{
+                  padding: '20px',
+                  borderRadius: '16px',
+                  backgroundColor: theme.background,
+                  border: `1px solid ${theme.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                  }}
+                >
+                  <div>
+                    <label
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme.textSecondary,
+                        display: 'block',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Nome spesa
+                    </label>
+                    <motion.input
+                      whileFocus={{ scale: 1.01 }}
+                      type="text"
+                      value={newExpense.name}
+                      onChange={(e) =>
+                        setNewExpense({ ...newExpense, name: e.target.value })
+                      }
+                      placeholder="Es. Affitto, Mutuo, Abbonamento"
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        borderRadius: '12px',
+                        border: `1px solid ${theme.border}`,
+                        backgroundColor: 'white',
+                        color: '#1A2151', // MODIFICATO: colore testo fisso
+                        fontSize: '16px',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme.textSecondary,
+                        display: 'block',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Importo (€)
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          left: '16px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: theme.textSecondary,
+                        }}
+                      >
+                        €
+                      </span>
+                      <motion.input
+                        whileFocus={{ scale: 1.01 }}
+                        type="number"
+                        value={newExpense.amount}
+                        onChange={(e) =>
+                          setNewExpense({
+                            ...newExpense,
+                            amount: e.target.value,
+                          })
+                        }
+                        placeholder="0.00"
+                        style={{
+                          width: '100%',
+                          padding: '16px 16px 16px 40px',
+                          borderRadius: '12px',
+                          border: `1px solid ${theme.border}`,
+                          backgroundColor: 'white',
+                          color: '#1A2151', // MODIFICATO: colore testo fisso
+                          fontSize: '16px',
+                          outline: 'none',
+                        }}
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme.textSecondary,
+                        display: 'block',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Categoria
+                    </label>
+                    <select
+                      value={newExpense.categoryId}
+                      onChange={(e) =>
+                        setNewExpense({
+                          ...newExpense,
+                          categoryId: parseInt(e.target.value),
+                        })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        borderRadius: '12px',
+                        border: `1px solid ${theme.border}`,
+                        backgroundColor: 'white',
+                        color: '#1A2151', // MODIFICATO: colore testo fisso
+                        fontSize: '16px',
+                        outline: 'none',
+                      }}
+                    >
+                      {categories
+                        .filter(c => c.id <= 20) // Solo categorie di spesa
+                        .map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.icon} {category.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleAddExpense}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: theme.secondary,
+                        color: 'white',
+                        fontWeight: '600',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Salva
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowAddForm(false)}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '12px',
+                        backgroundColor: theme.background,
+                        color: theme.textSecondary,
+                        fontWeight: '600',
+                        border: `1px solid ${theme.border}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Annulla
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Fixed Expenses List */}
+        <motion.div variants={itemVariants}>
+          <h3
+            style={{
+              fontSize: '18px',
+              fontWeight: '600',
+              color: theme.text,
+              marginBottom: '16px',
+            }}
+          >
+            Le tue spese fisse
+          </h3>
+
+          {localExpenses.length > 0 ? (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+            >
+              {localExpenses.map((expense) => {
+                const category = categories.find(
+                  (c) => c.id === expense.categoryId
+                );
+                return (
+                  <motion.div
+                    key={expense.id}
+                    variants={itemVariants}
+                    whileHover={{ scale: 1.02 }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '16px',
+                      borderRadius: '16px',
+                      backgroundColor: theme.background,
+                      border: `1px solid ${theme.border}`,
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '16px',
+                          backgroundColor: `${category?.color}15`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <span style={{ fontSize: '24px' }}>
+                          {category?.icon}
+                        </span>
+                      </div>
+                      <div>
+                        <p style={{ fontWeight: '500', color: theme.text }}>
+                          {expense.name}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: '14px',
+                            color: theme.textSecondary,
+                          }}
+                        >
+                          {category?.name}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                      }}
+                    >
+                      <p style={{ fontWeight: '700', color: theme.danger }}>
+                        € {expense.amount.toFixed(2)}
+                      </p>
+                      <motion.button
+                        whileHover={{
+                          scale: 1.1,
+                          backgroundColor: theme.danger,
+                        }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => handleDeleteExpense(expense.id)}
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          backgroundColor: `${theme.danger}15`,
+                          color: theme.danger,
+                          border: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease',
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          ) : (
+            <motion.div
+              variants={itemVariants}
+              style={{
+                textAlign: 'center',
+                padding: '48px 24px',
+                borderRadius: '16px',
+                backgroundColor: theme.background,
+                color: theme.textSecondary,
+              }}
+            >
+              <Wallet
+                size={48}
+                style={{ margin: '0 auto 16px', opacity: 0.5 }}
+              />
+              <p
+                style={{
+                  fontSize: '18px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                }}
+              >
+                Nessuna spesa fissa
+              </p>
+              <p style={{ fontSize: '14px' }}>
+                Aggiungi le tue spese ricorrenti mensili
+              </p>
+            </motion.div>
+          )}
+        </motion.div>
+
+        {/* Continue Button */}
         <motion.button
           variants={itemVariants}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleSave}
+          onClick={handleContinue}
           style={{
             width: '100%',
             padding: '16px',
             borderRadius: '16px',
-            background: `linear-gradient(135deg, ${theme.secondary} 0%, #26CC71 100%)`,
+            background: `linear-gradient(135deg, ${theme.primary} 0%, #5A85FF 100%)`,
             color: 'white',
             fontSize: '16px',
             fontWeight: '600',
             border: 'none',
             cursor: 'pointer',
+            marginTop: '32px',
           }}
         >
-          {isInitialSetup ? 'Completa configurazione' : 'Salva e vai alla Dashboard'}
+          {isInitialSetup ? 'Continua' : 'Salva e continua'}
         </motion.button>
 
         {/* Navigation - mostra solo se non è la configurazione iniziale */}
@@ -607,7 +878,10 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             }}
           >
             <button
-              onClick={() => setCurrentView('expenses')}
+              onClick={() => {
+                saveAllSettings(); // Salva prima di navigare
+                setTimeout(() => setCurrentView('income'), 200);
+              }}
               style={{
                 fontSize: '14px',
                 fontWeight: '500',
@@ -622,7 +896,11 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             </button>
 
             <button
-              onClick={() => setCurrentView('goals')}
+              onClick={() => {
+                // Salva prima di navigare
+                saveAllSettings();
+                setTimeout(() => setCurrentView('savings'), 200);
+              }}
               style={{
                 fontSize: '14px',
                 fontWeight: '500',
@@ -636,8 +914,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                 gap: '4px',
               }}
             >
-              Obiettivi
-              <ArrowRight size={16} />
+              Risparmio
+              <TrendingUp size={16} />
             </button>
           </motion.div>
         )}
@@ -646,4 +924,4 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
   );
 };
 
-export default SavingsSetup;
+export default ExpensesSetup;
