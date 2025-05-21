@@ -1,7 +1,14 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Check, TrendingUp } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
+
+// Verifica se siamo in PWA
+const isPWA = () => {
+  return window.matchMedia('(display-mode: standalone)').matches || 
+         window.navigator.standalone || // Safari iOS
+         document.referrer.includes('android-app://');
+};
 
 const IncomeSetup = ({ isInitialSetup, onComplete }) => {
   const {
@@ -13,6 +20,7 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
     setNextPaydayDate,
     theme,
     setCurrentView,
+    saveAllSettings, // Utilizziamo questa funzione per forzare il salvataggio
   } = useContext(AppContext);
 
   // Ottieni il mese corrente in formato testo (es. "Maggio")
@@ -26,11 +34,31 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const lastDayFormatted = lastDayOfMonth.toISOString().split('T')[0];
 
-  // Stato
-  const [income, setIncome] = useState(monthlyIncome ? monthlyIncome.toString() : '');
-  const [periodStart, setPeriodStart] = useState(todayFormatted);
-  const [periodEnd, setPeriodEnd] = useState(lastDayFormatted);
+  // Stato locale con valori predefiniti dal contesto
+  const [income, setIncome] = useState(
+    monthlyIncome ? monthlyIncome.toString() : ''
+  );
+  const [periodStart, setPeriodStart] = useState(
+    lastPaydayDate || todayFormatted
+  );
+  const [periodEnd, setPeriodEnd] = useState(
+    nextPaydayDate || lastDayFormatted
+  );
   const [showSuccess, setShowSuccess] = useState(false);
+  const [saveAttempted, setSaveAttempted] = useState(false);
+
+  // Aggiorna gli stati locali quando cambiano i valori nel contesto
+  useEffect(() => {
+    if (monthlyIncome && !saveAttempted) {
+      setIncome(monthlyIncome.toString());
+    }
+    if (lastPaydayDate && !saveAttempted) {
+      setPeriodStart(lastPaydayDate);
+    }
+    if (nextPaydayDate && !saveAttempted) {
+      setPeriodEnd(nextPaydayDate);
+    }
+  }, [monthlyIncome, lastPaydayDate, nextPaydayDate, saveAttempted]);
 
   const handlePeriodStartChange = (e) => {
     const newStartDate = e.target.value;
@@ -45,6 +73,12 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
   const handleSave = () => {
     const parsedIncome = parseFloat(income);
     if (!isNaN(parsedIncome) && parsedIncome > 0) {
+      console.log("Salvando reddito:", {
+        monthlyIncome: parsedIncome,
+        lastPaydayDate: periodStart,
+        nextPaydayDate: periodEnd
+      });
+      
       // Salva l'entrata
       setMonthlyIncome(parsedIncome);
       
@@ -53,14 +87,45 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
       
       // La data fine periodo è considerata il prossimo pagamento
       setNextPaydayDate(periodEnd);
+
+      // Forza un salvataggio immediatamente
+      setTimeout(() => {
+        saveAllSettings();
+        
+        // Per PWA, effettua un secondo tentativo dopo un breve ritardo
+        if (isPWA()) {
+          setTimeout(() => {
+            console.log("Secondo tentativo di salvataggio in PWA (IncomeSetup)");
+            saveAllSettings();
+          }, 1000);
+        }
+      }, 200);
+      
+      setSaveAttempted(true);
       
       // Mostra animazione e procedi
       setShowSuccess(true);
+
+      // Backup in localStorage (solo come sicurezza)
+      try {
+        localStorage.setItem('budget-income', parsedIncome.toString());
+        localStorage.setItem('budget-payday-last', periodStart);
+        localStorage.setItem('budget-payday-next', periodEnd);
+      } catch (e) {
+        console.error("Errore nel backup localStorage:", e);
+      }
+      
       setTimeout(() => {
         if (isInitialSetup && onComplete) {
           onComplete(parsedIncome);
         } else {
-          setCurrentView('expenses');
+          // Salva nuovamente prima di cambiare vista
+          saveAllSettings();
+          
+          // Passa un breve ritardo prima di cambiare vista
+          setTimeout(() => {
+            setCurrentView('expenses');
+          }, 200);
         }
       }, 800);
     }
@@ -328,7 +393,10 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
             </button>
 
             <button
-              onClick={() => setCurrentView('expenses')}
+              onClick={() => {
+                // Salva prima di navigare
+                handleSave();
+              }}
               style={{
                 fontSize: '14px',
                 fontWeight: '500',
