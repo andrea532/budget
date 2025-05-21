@@ -1,6 +1,6 @@
-import React, { useState, useContext } from 'react';
-import { motion } from 'framer-motion';
-import { Target, TrendingUp, ArrowRight, Check } from 'lucide-react';
+import React, { useState, useContext, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Target, TrendingUp, ArrowRight, Check, Calendar, Info } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
 const SavingsSetup = ({ isInitialSetup, onComplete }) => {
@@ -12,10 +12,16 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     setCurrentView,
     addToSavings,
     completeSetup,
+    // Stato e funzioni relative al ciclo di pagamento
+    paymentCycleType,
+    lastPaydayDate,
+    nextPaydayDate,
+    getDaysUntilPayday
   } = useContext(AppContext);
 
   const [percentage, setPercentage] = useState(savingsPercentage);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPaymentInfo, setShowPaymentInfo] = useState(false);
 
   // Animazioni
   const containerVariants = {
@@ -46,9 +52,9 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
       setSavingsPercentage(percentage);
       
       // Calcola e aggiungi automaticamente il risparmio mensile
-      const monthlyAutomaticSavings = (monthlyIncome * percentage) / 100;
-      if (monthlyAutomaticSavings > 0) {
-        addToSavings(monthlyAutomaticSavings);
+      const savingsAmount = calculateSavingAmount();
+      if (savingsAmount > 0) {
+        addToSavings(savingsAmount);
       }
       
       setShowSuccess(true);
@@ -68,7 +74,95 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     }
   };
 
-  const savingsAmount = (monthlyIncome * percentage) / 100;
+  // Calcola l'importo di risparmio basato sul ciclo di pagamento
+  const calculateSavingAmount = () => {
+    const baseAmount = (monthlyIncome * percentage) / 100;
+    
+    // Per cicli non mensili, adattiamo l'importo
+    if (paymentCycleType === 'weekly') {
+      return baseAmount / 4; // Approssimazione settimanale (un mese = ~4 settimane)
+    } else if (paymentCycleType === 'biweekly') {
+      return baseAmount / 2; // Approssimazione bisettimanale (un mese = ~2 periodi di due settimane)
+    }
+    
+    return baseAmount; // Ciclo mensile
+  };
+
+  // Ottiene l'importo di risparmio per visualizzazione
+  const getSavingsAmount = () => {
+    const baseAmount = (monthlyIncome * percentage) / 100;
+    
+    // Restituisci il valore appropriato in base al ciclo
+    if (paymentCycleType === 'weekly') {
+      return baseAmount / 4; // ~1/4 del risparmio mensile ogni settimana
+    } else if (paymentCycleType === 'biweekly') {
+      return baseAmount / 2; // Metà del risparmio mensile ogni due settimane
+    }
+    
+    return baseAmount; // Importo mensile completo
+  };
+
+  // Formatta la data in formato italiano
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/D';
+    
+    const date = new Date(dateString);
+    return date.toLocaleDateString('it-IT', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  // Ottiene la descrizione del ciclo di pagamento attuale
+  const getPaymentCycleDescription = () => {
+    let cycleLabel = 'Mensile';
+    
+    if (paymentCycleType === 'weekly') {
+      cycleLabel = 'Settimanale';
+    } else if (paymentCycleType === 'biweekly') {
+      cycleLabel = 'Ogni 15 giorni';
+    }
+    
+    return cycleLabel;
+  };
+
+  // Ottiene una descrizione del ciclo di pagamento e delle date
+  const getPaymentInfo = () => {
+    if (!lastPaydayDate && !nextPaydayDate) {
+      return 'Nessun ciclo di pagamento configurato. Vai su "Stipendio" per configurarlo.';
+    }
+    
+    const cycleType = getPaymentCycleDescription();
+    const daysUntil = getDaysUntilPayday();
+    
+    let info = `Ciclo ${cycleType}`;
+    
+    if (lastPaydayDate) {
+      info += `\nUltimo pagamento: ${formatDate(lastPaydayDate)}`;
+    }
+    
+    if (nextPaydayDate) {
+      info += `\nProssimo pagamento: ${formatDate(nextPaydayDate)}`;
+      if (daysUntil !== null) {
+        info += ` (tra ${daysUntil} ${daysUntil === 1 ? 'giorno' : 'giorni'})`;
+      }
+    }
+    
+    return info;
+  };
+  
+  // Ottiene la dicitura del periodo per la visualizzazione
+  const getSavingPeriodLabel = () => {
+    switch(paymentCycleType) {
+      case 'weekly':
+        return 'RISPARMIO SETTIMANALE';
+      case 'biweekly':
+        return 'RISPARMIO BISETTIMANALE';
+      default:
+        return 'RISPARMIO MENSILE';
+    }
+  };
 
   return (
     <motion.div
@@ -173,6 +267,108 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           </motion.div>
         </motion.div>
 
+        {/* Informazioni sul ciclo di pagamento */}
+        <motion.div
+          variants={itemVariants}
+          style={{
+            padding: '16px',
+            borderRadius: '16px',
+            backgroundColor: `${theme.primary}15`,
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+          }}
+          onClick={() => setShowPaymentInfo(!showPaymentInfo)}
+        >
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: '500', color: theme.text }}>
+              Ciclo di risparmio: {getPaymentCycleDescription()}
+            </p>
+            <p style={{ fontSize: '12px', color: theme.textSecondary }}>
+              I risparmi si adattano al tuo ciclo di stipendio
+            </p>
+          </div>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: `${theme.primary}20`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Calendar size={18} style={{ color: theme.primary }} />
+          </div>
+        </motion.div>
+
+        <AnimatePresence>
+          {showPaymentInfo && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              style={{
+                overflow: 'hidden',
+                marginBottom: '24px',
+                padding: '16px',
+                borderRadius: '16px',
+                backgroundColor: theme.background,
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <Info size={20} style={{ color: theme.primary }} />
+                <p style={{ fontSize: '14px', color: theme.text, fontWeight: '500' }}>
+                  Informazioni sul ciclo di risparmio
+                </p>
+              </div>
+              {getPaymentInfo().split('\n').map((line, index) => (
+                <p 
+                  key={index} 
+                  style={{
+                    fontSize: '14px', 
+                    color: theme.text,
+                    marginBottom: index < getPaymentInfo().split('\n').length - 1 ? '8px' : '0'
+                  }}
+                >
+                  {line}
+                </p>
+              ))}
+              
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end', 
+                marginTop: '16px' 
+              }}>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setCurrentView('income')}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    backgroundColor: theme.primary,
+                    color: 'white',
+                    border: 'none',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  Modifica ciclo <Calendar size={16} />
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <motion.div
           variants={itemVariants}
           style={{ textAlign: 'center', marginBottom: '32px' }}
@@ -185,7 +381,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               marginBottom: '8px',
             }}
           >
-            Risparmio mensile
+            Risparmio {paymentCycleType === 'monthly' ? 'mensile' : 
+                      paymentCycleType === 'biweekly' ? 'bisettimanale' : 'settimanale'}
           </h3>
           <p style={{ fontSize: '14px', color: theme.textSecondary }}>
             Imposta la percentuale di entrate da risparmiare
@@ -308,10 +505,10 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               marginBottom: '8px',
             }}
           >
-            RISPARMIO MENSILE
+            {getSavingPeriodLabel()}
           </p>
           <motion.p
-            key={savingsAmount}
+            key={getSavingsAmount()}
             initial={{ scale: 0.5 }}
             animate={{ scale: 1 }}
             style={{
@@ -320,8 +517,20 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               color: theme.secondary,
             }}
           >
-            € {savingsAmount.toFixed(2)}
+            € {getSavingsAmount().toFixed(2)}
           </motion.p>
+          
+          {paymentCycleType !== 'monthly' && (
+            <p
+              style={{
+                fontSize: '14px',
+                color: theme.textSecondary,
+                marginTop: '8px',
+              }}
+            >
+              (€ {((monthlyIncome * percentage) / 100).toFixed(2)} al mese)
+            </p>
+          )}
         </motion.div>
 
         {/* Quick Presets */}
