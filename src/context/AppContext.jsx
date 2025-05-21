@@ -16,7 +16,8 @@ import {
   deleteFutureExpense as dbDeleteFutureExpense,
   getSavingsHistory,
   addSavingsEntry as dbAddSavingsEntry,
-  clearDatabase
+  clearDatabase,
+  isPWA
 } from '../services/db';
 
 export const AppContext = createContext(null);
@@ -170,6 +171,11 @@ export const AppProvider = ({ children }) => {
   // Funzione per salvare subito tutte le impostazioni
   const saveAllSettings = async () => {
     try {
+      // Per mantenere la persistenza su PWA, aggiungiamo una voce in localStorage
+      if (isPWA()) {
+        localStorage.setItem('budget-app-saved', new Date().toISOString());
+      }
+      
       const settings = {
         id: 1, // ID fisso per le impostazioni
         userSettings,
@@ -185,6 +191,33 @@ export const AppProvider = ({ children }) => {
       console.log("Impostazioni salvate con successo:", settings);
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
+      
+      // Retry su PWA in caso di errore
+      if (isPWA()) {
+        console.log("Tentativo di recupero errore su PWA");
+        setTimeout(async () => {
+          try {
+            // Rinitializziamo il database prima di riprovare
+            await initDB();
+            
+            const settingsRetry = {
+              id: 1,
+              userSettings,
+              monthlyIncome,
+              lastPaydayDate,
+              nextPaydayDate,
+              savingsPercentage,
+              streak,
+              achievements
+            };
+            
+            await saveSettings(settingsRetry);
+            console.log("Recupero salvataggio PWA riuscito");
+          } catch (retryError) {
+            console.error("Anche il tentativo di recupero è fallito:", retryError);
+          }
+        }, 2000);
+      }
     }
   };
 
@@ -195,10 +228,19 @@ export const AppProvider = ({ children }) => {
       setupCompleted: true
     }));
     
-    // Salva esplicitamente le impostazioni aggiornate
+    // Salva esplicitamente le impostazioni aggiornate con un ritardo maggiore per PWA
+    const saveDelay = isPWA() ? 1000 : 200;
     setTimeout(() => {
       saveAllSettings();
-    }, 200);
+      
+      // Su PWA potrebbe essere necessario un secondo tentativo
+      if (isPWA()) {
+        setTimeout(() => {
+          console.log("Secondo tentativo di salvataggio in PWA");
+          saveAllSettings();
+        }, 1500);
+      }
+    }, saveDelay);
   };
 
   // Inizializzazione del database e caricamento dati
@@ -209,6 +251,11 @@ export const AppProvider = ({ children }) => {
         
         // Inizializza il database
         await initDB();
+        
+        // Su PWA, piccolo ritardo aggiuntivo per assicurarsi che il DB sia pronto
+        if (isPWA()) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
         
         // Carica le impostazioni salvate
         const settingsData = await getSettings();
@@ -229,6 +276,39 @@ export const AppProvider = ({ children }) => {
             const themeId = settings.userSettings.themeId;
             if (THEMES[themeId]) {
               setActiveTheme(THEMES[themeId]);
+            }
+          }
+        } else if (isPWA()) {
+          // In PWA potrebbe esserci un problema di accesso al DB
+          console.log("Dati non trovati in PWA, verifico localStorage...");
+          
+          // Verifica se abbiamo salvato dati in localStorage come backup
+          const savedTimestamp = localStorage.getItem('budget-app-saved');
+          if (savedTimestamp) {
+            console.log(`Ultimo salvataggio rilevato: ${savedTimestamp}`);
+            console.log("Tentativo di reinizializzazione DB");
+            
+            // Reinizializza e ritenta
+            await initDB();
+            const retrySettings = await getSettings();
+            
+            if (retrySettings && retrySettings.length > 0) {
+              console.log("Recupero dati riuscito al secondo tentativo");
+              const settings = retrySettings[0];
+              setUserSettings(settings.userSettings || userSettings);
+              setMonthlyIncome(settings.monthlyIncome || 0);
+              setLastPaydayDate(settings.lastPaydayDate || '');
+              setNextPaydayDate(settings.nextPaydayDate || '');
+              setSavingsPercentage(settings.savingsPercentage || 10);
+              setStreak(settings.streak || 0);
+              setAchievements(settings.achievements || []);
+              
+              if (settings.userSettings && settings.userSettings.themeId) {
+                const themeId = settings.userSettings.themeId;
+                if (THEMES[themeId]) {
+                  setActiveTheme(THEMES[themeId]);
+                }
+              }
             }
           }
         }
@@ -266,7 +346,43 @@ export const AppProvider = ({ children }) => {
         setIsLoading(false);
       } catch (error) {
         console.error('Errore nel caricamento dei dati:', error);
-        setIsLoading(false);
+        
+        // Su PWA, fallback su localStorage
+        if (isPWA()) {
+          console.log("Tentativo di fallback per PWA");
+          try {
+            // Forza la chiusura e reinizializzazione del DB
+            await clearDatabase();
+            await initDB();
+            
+            // Retry dopo 1 secondo
+            setTimeout(async () => {
+              try {
+                const retrySettings = await getSettings();
+                if (retrySettings && retrySettings.length > 0) {
+                  // Recupero dati...
+                  const settings = retrySettings[0];
+                  setUserSettings(settings.userSettings || userSettings);
+                  setMonthlyIncome(settings.monthlyIncome || 0);
+                  setLastPaydayDate(settings.lastPaydayDate || '');
+                  setNextPaydayDate(settings.nextPaydayDate || '');
+                  setSavingsPercentage(settings.savingsPercentage || 10);
+                  setStreak(settings.streak || 0);
+                  setAchievements(settings.achievements || []);
+                }
+              } catch (e) {
+                console.error("Fallback fallito:", e);
+              } finally {
+                setIsLoading(false);
+              }
+            }, 1000);
+          } catch (e) {
+            console.error("Fallback fallito completamente:", e);
+            setIsLoading(false);
+          }
+        } else {
+          setIsLoading(false);
+        }
       }
     };
     
@@ -282,7 +398,7 @@ export const AppProvider = ({ children }) => {
       lastPaydayDate, 
       nextPaydayDate, 
       savingsPercentage, 
-      userSettings: userSettings
+      userSettings
     });
     
     const saveUserData = async () => {
@@ -300,12 +416,25 @@ export const AppProvider = ({ children }) => {
         
         await saveSettings(settings);
         console.log("Impostazioni salvate con successo:", settings);
+        
+        // Per PWA, aggiorna anche localStorage come backup
+        if (isPWA()) {
+          localStorage.setItem('budget-app-saved', new Date().toISOString());
+        }
       } catch (error) {
         console.error('Errore nel salvataggio delle impostazioni:', error);
+        // Tentativo aggiuntivo su PWA dopo un ritardo
+        if (isPWA()) {
+          setTimeout(() => saveAllSettings(), 1000);
+        }
       }
     };
     
-    saveUserData();
+    // Per PWA aggiungiamo un ritardo prima del salvataggio
+    const saveDelay = isPWA() ? 500 : 0;
+    setTimeout(() => {
+      saveUserData();
+    }, saveDelay);
   }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, streak, achievements, isLoading]);
 
   // Aggiorna i colori del tema quando cambia themeId
@@ -504,8 +633,24 @@ export const AppProvider = ({ children }) => {
       // Aggiorna lo streak e gli achievements
       updateStreakAndAchievements();
       
+      // Per PWA, forza salvataggio dopo aggiunta transazione
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'aggiunta della transazione:', error);
+      
+      // Retry per PWA
+      if (isPWA()) {
+        try {
+          console.log("Ritentativo aggiunta transazione in PWA");
+          await initDB();
+          await dbAddTransaction(newTransaction);
+          setTransactions(prev => [newTransaction, ...prev]);
+        } catch (retryError) {
+          console.error('Anche il ritentativo è fallito:', retryError);
+        }
+      }
     }
   };
 
@@ -528,6 +673,11 @@ export const AppProvider = ({ children }) => {
           transaction.id === id ? updatedTransaction : transaction
         )
       );
+      
+      // Per PWA, forza salvataggio dopo aggiornamento
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'aggiornamento della transazione:', error);
     }
@@ -540,6 +690,11 @@ export const AppProvider = ({ children }) => {
       
       // Aggiorna lo stato
       setTransactions(prev => prev.filter(transaction => transaction.id !== id));
+      
+      // Per PWA, forza salvataggio dopo eliminazione
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'eliminazione della transazione:', error);
     }
@@ -563,9 +718,24 @@ export const AppProvider = ({ children }) => {
       // Forza il salvataggio delle impostazioni aggiornate
       setTimeout(() => {
         saveAllSettings();
-      }, 200);
+      }, isPWA() ? 800 : 200);
     } catch (error) {
       console.error('Errore nell\'aggiunta della spesa fissa:', error);
+      
+      // Retry per PWA
+      if (isPWA()) {
+        setTimeout(async () => {
+          try {
+            console.log("Ritentativo aggiunta spesa fissa in PWA");
+            await initDB();
+            await dbAddFixedExpense(newExpense);
+            setFixedExpenses(prev => [...prev, newExpense]);
+            saveAllSettings();
+          } catch (e) {
+            console.error("Ritentativo fallito:", e);
+          }
+        }, 1000);
+      }
     }
   };
 
@@ -580,7 +750,7 @@ export const AppProvider = ({ children }) => {
       // Forza il salvataggio delle impostazioni aggiornate
       setTimeout(() => {
         saveAllSettings();
-      }, 200);
+      }, isPWA() ? 800 : 200);
     } catch (error) {
       console.error('Errore nell\'eliminazione della spesa fissa:', error);
     }
@@ -600,6 +770,11 @@ export const AppProvider = ({ children }) => {
       
       // Aggiorna lo stato
       setFutureExpenses(prev => [...prev, newExpense]);
+      
+      // Per PWA, forza salvataggio
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'aggiunta della spesa futura:', error);
     }
@@ -624,6 +799,11 @@ export const AppProvider = ({ children }) => {
           expense.id === id ? updatedExpense : expense
         )
       );
+      
+      // Per PWA, forza salvataggio
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'aggiornamento della spesa futura:', error);
     }
@@ -636,6 +816,11 @@ export const AppProvider = ({ children }) => {
       
       // Aggiorna lo stato
       setFutureExpenses(prev => prev.filter(expense => expense.id !== id));
+      
+      // Per PWA, forza salvataggio
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'eliminazione della spesa futura:', error);
     }
@@ -663,6 +848,10 @@ export const AppProvider = ({ children }) => {
       // Aggiungi un achievement se il risparmio totale supera una soglia
       checkSavingsAchievements(newTotal);
       
+      // Per PWA, forza salvataggio
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nell\'aggiunta del risparmio:', error);
     }
@@ -686,6 +875,11 @@ export const AppProvider = ({ children }) => {
       // Aggiorna lo stato
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
+      
+      // Per PWA, forza salvataggio
+      if (isPWA()) {
+        setTimeout(saveAllSettings, 500);
+      }
     } catch (error) {
       console.error('Errore nel prelievo dai risparmi:', error);
     }
@@ -849,6 +1043,11 @@ export const AppProvider = ({ children }) => {
         streak: 0,
         achievements: []
       });
+      
+      // In PWA, cancella anche localStorage
+      if (isPWA()) {
+        localStorage.removeItem('budget-app-saved');
+      }
       
       setIsLoading(false);
       
