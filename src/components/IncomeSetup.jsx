@@ -1,13 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { motion } from 'framer-motion';
-import {
-  DollarSign,
-  Calendar,
-  TrendingUp,
-  ArrowRight,
-  Check,
-  RefreshCw
-} from 'lucide-react';
+import { Check, TrendingUp } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
 const IncomeSetup = ({ isInitialSetup, onComplete }) => {
@@ -22,68 +15,47 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
     setCurrentView,
   } = useContext(AppContext);
 
+  // Ottieni il mese corrente in formato testo (es. "Maggio")
+  const currentMonth = new Date().toLocaleString('it-IT', { month: 'long' });
+
+  // Ottieni la data odierna
+  const today = new Date();
+  const todayFormatted = today.toISOString().split('T')[0];
+  
+  // Ottieni l'ultimo giorno del mese corrente
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const lastDayFormatted = lastDayOfMonth.toISOString().split('T')[0];
+
+  // Stato
   const [income, setIncome] = useState(monthlyIncome ? monthlyIncome.toString() : '');
-  const [selectedCycle, setSelectedCycle] = useState('monthly');
-  const [selectedDay, setSelectedDay] = useState(lastPaydayDate ? new Date(lastPaydayDate).getDate() : 27);
+  const [periodStart, setPeriodStart] = useState(todayFormatted);
+  const [periodEnd, setPeriodEnd] = useState(lastDayFormatted);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Cicli semplificati
-  const cycles = [
-    { id: 'monthly', label: 'Ogni mese', icon: '📅', description: 'Stesso giorno ogni mese' },
-    { id: 'biweekly', label: 'Ogni 15 giorni', icon: '📆', description: 'Due volte al mese' },
-    { id: 'weekly', label: 'Ogni settimana', icon: '🗓️', description: 'Stesso giorno ogni settimana' },
-  ];
-
-  // Giorni del mese (1-31)
-  const daysOfMonth = Array.from({ length: 31 }, (_, i) => i + 1);
-
-  // Calcolo automatico della prossima data di pagamento
-  const calculateNextPayday = () => {
-    const today = new Date();
-    let nextDate = new Date();
-
-    switch (selectedCycle) {
-      case 'monthly':
-        nextDate.setDate(selectedDay);
-        if (nextDate <= today) {
-          nextDate.setMonth(nextDate.getMonth() + 1);
-        }
-        break;
-      case 'biweekly':
-        // Ogni 15 giorni dall'ultimo pagamento
-        if (lastPaydayDate) {
-          nextDate = new Date(lastPaydayDate);
-          nextDate.setDate(nextDate.getDate() + 15);
-        } else {
-          nextDate.setDate(selectedDay);
-        }
-        break;
-      case 'weekly':
-        // Prossimo venerdì (o giorno selezionato)
-        const daysUntilNext = (5 - today.getDay() + 7) % 7 || 7;
-        nextDate.setDate(today.getDate() + daysUntilNext);
-        break;
+  const handlePeriodStartChange = (e) => {
+    const newStartDate = e.target.value;
+    setPeriodStart(newStartDate);
+    
+    // Se la data di fine è precedente alla nuova data di inizio, aggiorna la data di fine
+    if (new Date(periodEnd) < new Date(newStartDate)) {
+      setPeriodEnd(newStartDate);
     }
-
-    return nextDate.toISOString().split('T')[0];
   };
 
   const handleSave = () => {
     const parsedIncome = parseFloat(income);
-    if (!isNaN(parsedIncome) && parsedIncome >= 0) {
+    if (!isNaN(parsedIncome) && parsedIncome > 0) {
+      // Salva l'entrata
       setMonthlyIncome(parsedIncome);
       
-      const nextPayday = calculateNextPayday();
-      setNextPaydayDate(nextPayday);
+      // Usa la data inizio periodo come ultima data di pagamento
+      setLastPaydayDate(periodStart);
       
-      // Imposta l'ultimo pagamento come oggi o la data selezionata
-      if (!lastPaydayDate) {
-        const today = new Date();
-        setLastPaydayDate(today.toISOString().split('T')[0]);
-      }
-
+      // La data fine periodo è considerata il prossimo pagamento
+      setNextPaydayDate(periodEnd);
+      
+      // Mostra animazione e procedi
       setShowSuccess(true);
-      
       setTimeout(() => {
         if (isInitialSetup && onComplete) {
           onComplete(parsedIncome);
@@ -92,30 +64,6 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
         }
       }, 800);
     }
-  };
-
-  // Animazioni
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        type: 'spring',
-        stiffness: 300,
-        damping: 30,
-      },
-    },
   };
 
   return (
@@ -138,7 +86,7 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
         }}
       >
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: theme.text }}>
-          {isInitialSetup ? 'Configura il tuo budget' : 'Il tuo stipendio'}
+          {isInitialSetup ? 'Configurazione reddito' : 'Il tuo reddito'}
         </h2>
         <p
           style={{
@@ -147,7 +95,7 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
             marginTop: '4px',
           }}
         >
-          {isInitialSetup ? 'Iniziamo impostando il tuo stipendio mensile' : 'Quanto guadagni e quando ricevi lo stipendio'}
+          Inserisci quanto hai guadagnato
         </p>
       </motion.div>
 
@@ -177,9 +125,9 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
 
       {/* Main Card */}
       <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
         style={{
           margin: '0 16px',
           padding: '24px',
@@ -188,34 +136,25 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
         }}
       >
-        {/* Step 1: Importo */}
-        <motion.div variants={itemVariants} style={{ marginBottom: '32px' }}>
+        {/* Importo */}
+        <div style={{ marginBottom: '32px' }}>
+          <label 
+            style={{ 
+              fontSize: '18px', 
+              fontWeight: '600', 
+              color: theme.text,
+              marginBottom: '16px',
+              display: 'block',
+              textAlign: 'center'
+            }}
+          >
+            Quanto hai guadagnato questo mese?
+          </label>
+          
           <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '12px',
-            marginBottom: '20px' 
+            position: 'relative',
+            marginBottom: '12px'
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: `${theme.secondary}15`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <span style={{ fontSize: '20px' }}>💰</span>
-            </div>
-            <div>
-              <p style={{ fontWeight: '600', color: theme.text }}>Quanto guadagni al mese?</p>
-              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                Inserisci il tuo stipendio netto mensile
-              </p>
-            </div>
-          </div>
-
-          <div style={{ position: 'relative' }}>
             <div
               style={{
                 position: 'absolute',
@@ -229,12 +168,11 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
             >
               €
             </div>
-            <motion.input
-              whileFocus={{ scale: 1.01 }}
+            <input
               type="number"
               value={income}
               onChange={(e) => setIncome(e.target.value)}
-              placeholder="0.00"
+              placeholder="0"
               style={{
                 width: '100%',
                 padding: '20px 20px 20px 48px',
@@ -247,166 +185,96 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
                 outline: 'none',
                 transition: 'all 0.3s ease',
               }}
-              step="0.01"
+              step="1"
               min="0"
             />
           </div>
-        </motion.div>
+        </div>
 
-        {/* Step 2: Frequenza pagamento */}
-        <motion.div variants={itemVariants} style={{ marginBottom: '32px' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+        {/* Periodo */}
+        <div style={{ marginBottom: '32px' }}>
+          <label 
+            style={{ 
+              fontSize: '18px', 
+              fontWeight: '600', 
+              color: theme.text,
+              marginBottom: '16px',
+              display: 'block',
+              textAlign: 'center'
+            }}
+          >
+            Periodo
+          </label>
+          
+          <div style={{
+            display: 'flex',
             gap: '12px',
-            marginBottom: '20px' 
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px'
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: `${theme.primary}15`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <span style={{ fontSize: '20px' }}>📅</span>
-            </div>
-            <div>
-              <p style={{ fontWeight: '600', color: theme.text }}>Quando ricevi lo stipendio?</p>
-              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                Seleziona la frequenza del pagamento
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {cycles.map(cycle => (
-              <motion.button
-                key={cycle.id}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => setSelectedCycle(cycle.id)}
+            <div style={{ flex: 1 }}>
+              <label
                 style={{
-                  padding: '16px',
-                  borderRadius: '16px',
-                  border: `2px solid ${selectedCycle === cycle.id ? theme.primary : theme.border}`,
-                  backgroundColor: selectedCycle === cycle.id ? `${theme.primary}10` : theme.background,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  transition: 'all 0.3s ease'
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: theme.textSecondary,
+                  marginBottom: '8px',
+                  display: 'block'
                 }}
               >
-                <span style={{ fontSize: '24px' }}>{cycle.icon}</span>
-                <div style={{ textAlign: 'left' }}>
-                  <p style={{ fontWeight: '600', color: theme.text, fontSize: '16px' }}>
-                    {cycle.label}
-                  </p>
-                  <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                    {cycle.description}
-                  </p>
-                </div>
-              </motion.button>
-            ))}
+                Dal
+              </label>
+              <input
+                type="date"
+                value={periodStart}
+                onChange={(e) => handlePeriodStartChange(e)}
+                min={todayFormatted}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  backgroundColor: 'white',
+                  color: '#1A2151',
+                  fontSize: '16px',
+                }}
+              />
+            </div>
+            
+            <div style={{ flex: 1 }}>
+              <label
+                style={{
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: theme.textSecondary,
+                  marginBottom: '8px',
+                  display: 'block'
+                }}
+              >
+                Al
+              </label>
+              <input
+                type="date"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+                min={periodStart}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  backgroundColor: 'white',
+                  color: '#1A2151',
+                  fontSize: '16px',
+                }}
+              />
+            </div>
           </div>
-        </motion.div>
+        </div>
 
-        {/* Step 3: Giorno del pagamento (solo per mensile) */}
-        {selectedCycle === 'monthly' && (
-          <motion.div 
-            variants={itemVariants} 
-            style={{ marginBottom: '32px' }}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-          >
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px',
-              marginBottom: '20px' 
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                backgroundColor: `${theme.warning}15`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <span style={{ fontSize: '20px' }}>📆</span>
-              </div>
-              <div>
-                <p style={{ fontWeight: '600', color: theme.text }}>Che giorno del mese?</p>
-                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                  Seleziona il giorno di pagamento
-                </p>
-              </div>
-            </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '8px'
-            }}>
-              {daysOfMonth.map(day => (
-                <motion.button
-                  key={day}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setSelectedDay(day)}
-                  style={{
-                    aspectRatio: '1',
-                    borderRadius: '12px',
-                    border: `2px solid ${selectedDay === day ? theme.primary : theme.border}`,
-                    backgroundColor: selectedDay === day ? theme.primary : theme.background,
-                    color: selectedDay === day ? 'white' : theme.text,
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                >
-                  {day}
-                </motion.button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Summary */}
-        <motion.div
-          variants={itemVariants}
-          style={{
-            padding: '20px',
-            borderRadius: '16px',
-            backgroundColor: `${theme.secondary}10`,
-            border: `1px solid ${theme.secondary}30`,
-            marginBottom: '32px'
-          }}
-        >
-          <p style={{ fontSize: '14px', color: theme.textSecondary, marginBottom: '8px' }}>
-            Riepilogo
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <p style={{ fontSize: '18px', fontWeight: '700', color: theme.secondary }}>
-                € {income || '0.00'} al mese
-              </p>
-              <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                {cycles.find(c => c.id === selectedCycle)?.label}
-                {selectedCycle === 'monthly' && ` - giorno ${selectedDay}`}
-              </p>
-            </div>
-            <RefreshCw size={24} style={{ color: theme.secondary }} />
-          </div>
-        </motion.div>
-
-        {/* Save Button */}
+        {/* Pulsante salva */}
         <motion.button
-          variants={itemVariants}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleSave}
@@ -432,10 +300,9 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
           {isInitialSetup ? 'Continua' : 'Salva e continua'}
         </motion.button>
 
-        {/* Navigation - mostra solo se non è la configurazione iniziale */}
+        {/* Navigation - solo se non è setup iniziale */}
         {!isInitialSetup && (
-          <motion.div
-            variants={itemVariants}
+          <div
             style={{
               marginTop: '24px',
               paddingTop: '24px',
@@ -478,7 +345,7 @@ const IncomeSetup = ({ isInitialSetup, onComplete }) => {
               Spese fisse
               <TrendingUp size={16} />
             </button>
-          </motion.div>
+          </div>
         )}
       </motion.div>
     </motion.div>
