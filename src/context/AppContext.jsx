@@ -15,7 +15,8 @@ import {
   updateFutureExpense as dbUpdateFutureExpense,
   deleteFutureExpense as dbDeleteFutureExpense,
   getSavingsHistory,
-  addSavingsEntry as dbAddSavingsEntry
+  addSavingsEntry as dbAddSavingsEntry,
+  clearDatabase
 } from '../services/db';
 
 export const AppContext = createContext(null);
@@ -756,6 +757,62 @@ export const AppProvider = ({ children }) => {
     };
   };
 
+  // Funzione per resettare completamente l'app
+  const resetApp = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Cancella il database
+      await clearDatabase();
+      
+      // Reinizializza il database
+      await initDB();
+      
+      // Resetta tutti gli stati
+      setCurrentView('dashboard');
+      setMonthlyIncome(0);
+      setLastPaydayDate('');
+      setNextPaydayDate('');
+      setFixedExpenses([]);
+      setSavingsPercentage(10);
+      setTransactions([]);
+      setSavingsHistory([]);
+      setTotalSavings(0);
+      setFutureExpenses([]);
+      setStreak(0);
+      setAchievements([]);
+      
+      // Resetta le impostazioni utente ma mantiene il tema e la lingua
+      setUserSettings({
+        ...userSettings,
+        setupCompleted: false // Segna la configurazione come non completata
+      });
+      
+      // Salva le impostazioni vuote
+      await saveSettings({
+        id: 1,
+        userSettings: {
+          ...userSettings,
+          setupCompleted: false
+        },
+        monthlyIncome: 0,
+        lastPaydayDate: '',
+        nextPaydayDate: '',
+        savingsPercentage: 10,
+        streak: 0,
+        achievements: []
+      });
+      
+      setIsLoading(false);
+      
+      // Dopo il reset, ricarica la pagina per sicurezza
+      window.location.reload();
+    } catch (error) {
+      console.error('Errore nel reset dell\'app:', error);
+      setIsLoading(false);
+    }
+  };
+
   // Value del provider con TUTTE le funzioni
   return (
     <AppContext.Provider value={{
@@ -799,7 +856,8 @@ export const AppProvider = ({ children }) => {
       getMonthlyStats,
       getWeeklyComparison,
       addToSavings,
-      withdrawFromSavings
+      withdrawFromSavings,
+      resetApp // Nuova funzione di reset
     }}>
       {children}
     </AppContext.Provider>
