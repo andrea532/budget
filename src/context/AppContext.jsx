@@ -277,28 +277,83 @@ export const AppProvider = ({ children }) => {
     }
   }, [userSettings.themeId, isLoading]);
 
+  // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET
+  const getDaysUntilPayday = () => {
+    if (!nextPaydayDate) return 30; // Valore di default se non esiste una data
+    
+    // Ottieni la data corrente e quella del prossimo pagamento
+    const today = new Date();
+    today.setHours(12, 0, 0, 0); // Mezzogiorno per evitare problemi di fuso orario
+    
+    const payArray = nextPaydayDate.split('-').map(Number);
+    const nextPayday = new Date(payArray[0], payArray[1]-1, payArray[2], 12, 0, 0);
+    
+    // Se oggi è uguale o successivo al nextPayday, restituisci 1
+    if (today >= nextPayday) return 1;
+    
+    // Calcolo esplicito dei giorni con un ciclo
+    let currentDate = new Date(today);
+    let diffDays = 0;
+    
+    while (currentDate < nextPayday) {
+      diffDays++;
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return diffDays;
+  };
+
   // Calcola il totale giornaliero delle spese future da sottrarre
   const getDailyFutureExpenses = () => {
     const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    
+    if (!nextPaydayDate) return 0;
+    
+    const payArray = nextPaydayDate.split('-').map(Number);
+    const nextPayday = new Date(payArray[0], payArray[1]-1, payArray[2], 12, 0, 0);
+    
     return futureExpenses.reduce((total, expense) => {
-      const dueDate = new Date(expense.dueDate);
-      const diffTime = dueDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const dueArray = expense.dueDate.split('-').map(Number);
+      const dueDate = new Date(dueArray[0], dueArray[1]-1, dueArray[2], 12, 0, 0);
       
-      if (diffDays > 0) {
-        const dailyAmount = expense.amount / diffDays;
+      // Se la scadenza è tra oggi e il prossimo pagamento
+      if (dueDate >= today && dueDate <= nextPayday) {
+        // Calcola quanti giorni mancano alla scadenza
+        let currentDate = new Date(today);
+        let daysUntilDue = 0;
+        
+        while (currentDate < dueDate) {
+          daysUntilDue++;
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        // Minimo 1 giorno per evitare divisioni per zero
+        daysUntilDue = Math.max(1, daysUntilDue);
+        
+        // Dividi l'importo per i giorni rimanenti
+        const dailyAmount = expense.amount / daysUntilDue;
+        
         return total + dailyAmount;
       }
+      
       return total;
     }, 0);
   };
 
-  // FUNZIONI IMPORTANTI
   const calculateDailyBudget = () => {
+    // Ottieni i valori necessari
     const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
     const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const dailyBudget = (monthlyIncome - totalFixedExpenses - savingsAmount) / daysInMonth;
+    
+    // Calcola i giorni rimanenti fino al prossimo pagamento
+    const daysUntilNextPayday = getDaysUntilPayday();
+    
+    // Budget totale disponibile per il periodo rimanente
+    const totalBudget = monthlyIncome - totalFixedExpenses - savingsAmount;
+    
+    // Budget giornaliero
+    const dailyBudget = totalBudget / daysUntilNextPayday;
     
     // Sottrai le spese future giornaliere
     const dailyFutureExpenses = getDailyFutureExpenses();
@@ -346,14 +401,51 @@ export const AppProvider = ({ children }) => {
     return monthlyIncome - totalFixedExpenses - savingsAmount - monthlyExpenses;
   };
 
-  const getDaysUntilPayday = () => {
-    if (!nextPaydayDate) return null;
-    const today = new Date();
-    const nextPayday = new Date(nextPaydayDate);
-    const diffTime = nextPayday - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 0;
-  };
+  // Sistema automatico per aggiungere risparmi mensili
+  useEffect(() => {
+    if (isLoading) return;
+    
+    // Controlla se è il giorno di paga
+    if (nextPaydayDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const payday = new Date(nextPaydayDate);
+      payday.setHours(0, 0, 0, 0);
+      
+      // Se oggi è il giorno di paga
+      if (today.getTime() === payday.getTime()) {
+        // Calcola e aggiungi automaticamente il risparmio mensile
+        const monthlyAutomaticSavings = (monthlyIncome * savingsPercentage) / 100;
+        if (monthlyAutomaticSavings > 0) {
+          addToSavings(monthlyAutomaticSavings, new Date().toISOString());
+        }
+        
+        // Calcola la durata del periodo
+        const startDate = new Date(lastPaydayDate);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(payday);
+        endDate.setHours(0, 0, 0, 0);
+        
+        // Calcolo esplicito dei giorni con un ciclo
+        let currentDate = new Date(startDate);
+        let diffDays = 0;
+        
+        while (currentDate <= endDate) {
+          diffDays++;
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        // Aggiungi la stessa durata al periodo attuale
+        const nextNextPayday = new Date(endDate);
+        nextNextPayday.setDate(nextNextPayday.getDate() + diffDays);
+        
+        setLastPaydayDate(payday.toISOString().split('T')[0]);
+        setNextPaydayDate(nextNextPayday.toISOString().split('T')[0]);
+      }
+    }
+  }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading, lastPaydayDate]);
 
   // Metodi per le transazioni
   const addTransaction = async (transaction) => {
@@ -550,32 +642,6 @@ export const AppProvider = ({ children }) => {
       console.error('Errore nel prelievo dai risparmi:', error);
     }
   };
-
-  // Sistema automatico per aggiungere risparmi mensili
-  useEffect(() => {
-    if (isLoading) return;
-    
-    // Controlla se è il giorno di paga
-    if (nextPaydayDate) {
-      const today = new Date();
-      const payday = new Date(nextPaydayDate);
-      
-      // Se oggi è il giorno di paga
-      if (today.toDateString() === payday.toDateString()) {
-        // Calcola e aggiungi automaticamente il risparmio mensile
-        const monthlyAutomaticSavings = (monthlyIncome * savingsPercentage) / 100;
-        if (monthlyAutomaticSavings > 0) {
-          addToSavings(monthlyAutomaticSavings, new Date().toISOString());
-        }
-        
-        // Aggiorna la data del prossimo stipendio
-        const nextMonth = new Date(payday);
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
-        setNextPaydayDate(nextMonth.toISOString().split('T')[0]);
-        setLastPaydayDate(today.toISOString().split('T')[0]);
-      }
-    }
-  }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading]);
 
   // Funzione per verificare e aggiornare streak e achievement
   const updateStreakAndAchievements = () => {
