@@ -18,15 +18,19 @@ import {
   Smartphone,
   Palette,
   Check,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 
 const SettingsPage = () => {
-  const { theme, userSettings, setUserSettings, setCurrentView, updateThemeColors, activeTheme } =
+  const { theme, userSettings, setUserSettings, setCurrentView, updateThemeColors, activeTheme, resetApp } =
     useContext(AppContext);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmationStep, setResetConfirmationStep] = useState(1);
 
   // Opzioni di tema disponibili con colori di sfondo personalizzati
   const themeOptions = [
@@ -167,6 +171,18 @@ const SettingsPage = () => {
       ...prev,
       notifications: !prev.notifications,
     }));
+  };
+
+  // Funzione per gestire il processo di reset in due step
+  const handleResetApp = () => {
+    if (resetConfirmationStep === 1) {
+      setResetConfirmationStep(2);
+    } else {
+      // Reset effettivo
+      resetApp();
+      setShowResetConfirm(false);
+      setResetConfirmationStep(1);
+    }
   };
 
   const SettingItem = ({
@@ -662,9 +678,6 @@ const SettingsPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Resto del contenuto della pagina */}
-      {/* ... */}
-      
       {/* Configurazione Budget */}
       <motion.div
         variants={containerVariants}
@@ -819,6 +832,103 @@ const SettingsPage = () => {
                 </p>
               </div>
             </div>
+            <ChevronRight size={20} style={{ color: theme.textSecondary }} />
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Gestione dati */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        style={{
+          margin: '0 16px 24px',
+          padding: '20px',
+          borderRadius: '24px',
+          backgroundColor: theme.card,
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+        }}
+      >
+        <motion.h3
+          variants={itemVariants}
+          style={{
+            fontSize: '18px',
+            fontWeight: '600',
+            color: theme.text,
+            marginBottom: '16px',
+          }}
+        >
+          Gestione dati
+        </motion.h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <motion.div
+            variants={itemVariants}
+            whileHover={{ scale: 1.02, x: 10 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowResetConfirm(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px',
+              borderRadius: '16px',
+              backgroundColor: `${theme.danger}10`,
+              border: `1px solid ${theme.danger}30`,
+              cursor: 'pointer',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Hover effect background */}
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              whileHover={{ scale: 2, opacity: 0.1 }}
+              style={{
+                position: 'absolute',
+                left: '40px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                backgroundColor: theme.danger,
+              }}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              <motion.div
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.5 }}
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '12px',
+                  backgroundColor: `${theme.danger}15`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <RefreshCw size={20} style={{ color: theme.danger }} />
+              </motion.div>
+              <div>
+                <p style={{ fontWeight: '500', color: theme.text }}>Azzera dati</p>
+                <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                  Ricomincia da zero
+                </p>
+              </div>
+            </div>
+
             <ChevronRight size={20} style={{ color: theme.textSecondary }} />
           </motion.div>
         </div>
@@ -1011,6 +1121,151 @@ const SettingsPage = () => {
           )}
         </AnimatePresence>
       </motion.div>
+
+      {/* Modale di conferma reset */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              zIndex: 100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+            }}
+            onClick={() => {
+              setShowResetConfirm(false);
+              setResetConfirmationStep(1);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: theme.card,
+                borderRadius: '24px',
+                width: '100%',
+                maxWidth: '340px',
+                padding: '24px',
+                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '16px'
+              }}>
+                <motion.div
+                  animate={{
+                    scale: [1, 1.2, 1],
+                    rotate: [0, 0, 0],
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    repeatType: "reverse"
+                  }}
+                  style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    backgroundColor: `${theme.danger}20`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <AlertTriangle size={30} color={theme.danger} />
+                </motion.div>
+              </div>
+
+              <h3 
+                style={{ 
+                  fontSize: '20px', 
+                  fontWeight: '600', 
+                  color: theme.text,
+                  textAlign: 'center',
+                  marginBottom: '16px' 
+                }}
+              >
+                {resetConfirmationStep === 1 
+                  ? 'Azzerare tutti i dati?' 
+                  : 'Sei davvero sicuro?'}
+              </h3>
+              
+              <p style={{
+                fontSize: '16px',
+                color: theme.textSecondary,
+                textAlign: 'center',
+                marginBottom: '24px',
+                lineHeight: '1.5'
+              }}>
+                {resetConfirmationStep === 1 
+                  ? 'Questa operazione eliminerà tutti i tuoi dati e riporterà l\'app allo stato iniziale. Tutti i budget, le transazioni e le impostazioni andranno persi.'
+                  : 'Tutti i tuoi dati verranno eliminati definitivamente. Questa azione non può essere annullata.'}
+              </p>
+
+              <div style={{ display: 'flex', gap: '12px', flexDirection: 'column' }}>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleResetApp}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '12px',
+                    backgroundColor: theme.danger,
+                    color: 'white',
+                    fontWeight: '600',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <RefreshCw size={18} />
+                  {resetConfirmationStep === 1 
+                    ? 'Sì, voglio azzerare i dati' 
+                    : 'Sì, sono sicuro'}
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setShowResetConfirm(false);
+                    setResetConfirmationStep(1);
+                  }}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '12px',
+                    backgroundColor: theme.background,
+                    color: theme.textSecondary,
+                    fontWeight: '600',
+                    border: `1px solid ${theme.border}`,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Annulla
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Developer Credits */}
       <motion.div
