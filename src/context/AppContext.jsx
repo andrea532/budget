@@ -167,12 +167,38 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
+  // Funzione per salvare subito tutte le impostazioni
+  const saveAllSettings = async () => {
+    try {
+      const settings = {
+        id: 1, // ID fisso per le impostazioni
+        userSettings,
+        monthlyIncome,
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage,
+        streak,
+        achievements
+      };
+      
+      await saveSettings(settings);
+      console.log("Impostazioni salvate con successo:", settings);
+    } catch (error) {
+      console.error('Errore nel salvataggio delle impostazioni:', error);
+    }
+  };
+
   // Funzione per completare il setup iniziale
   const completeSetup = () => {
     setUserSettings(prev => ({
       ...prev,
       setupCompleted: true
     }));
+    
+    // Salva esplicitamente le impostazioni aggiornate
+    setTimeout(() => {
+      saveAllSettings();
+    }, 200);
   };
 
   // Inizializzazione del database e caricamento dati
@@ -186,6 +212,8 @@ export const AppProvider = ({ children }) => {
         
         // Carica le impostazioni salvate
         const settingsData = await getSettings();
+        console.log("Impostazioni caricate:", settingsData);
+        
         if (settingsData && settingsData.length > 0) {
           const settings = settingsData[0];
           setUserSettings(settings.userSettings || userSettings);
@@ -249,6 +277,14 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (isLoading) return;
     
+    console.log("Rilevate modifiche alle impostazioni, salvataggio in corso...", {
+      monthlyIncome, 
+      lastPaydayDate, 
+      nextPaydayDate, 
+      savingsPercentage, 
+      userSettings: userSettings
+    });
+    
     const saveUserData = async () => {
       try {
         const settings = {
@@ -263,6 +299,7 @@ export const AppProvider = ({ children }) => {
         };
         
         await saveSettings(settings);
+        console.log("Impostazioni salvate con successo:", settings);
       } catch (error) {
         console.error('Errore nel salvataggio delle impostazioni:', error);
       }
@@ -522,6 +559,11 @@ export const AppProvider = ({ children }) => {
       
       // Aggiorna lo stato
       setFixedExpenses(prev => [...prev, newExpense]);
+      
+      // Forza il salvataggio delle impostazioni aggiornate
+      setTimeout(() => {
+        saveAllSettings();
+      }, 200);
     } catch (error) {
       console.error('Errore nell\'aggiunta della spesa fissa:', error);
     }
@@ -534,6 +576,11 @@ export const AppProvider = ({ children }) => {
       
       // Aggiorna lo stato
       setFixedExpenses(prev => prev.filter(expense => expense.id !== id));
+      
+      // Forza il salvataggio delle impostazioni aggiornate
+      setTimeout(() => {
+        saveAllSettings();
+      }, 200);
     } catch (error) {
       console.error('Errore nell\'eliminazione della spesa fissa:', error);
     }
@@ -836,6 +883,7 @@ export const AppProvider = ({ children }) => {
       updateThemeColors,
       activeTheme,
       completeSetup, // Funzione per completare il setup iniziale
+      saveAllSettings, // Esposizione della funzione per salvare manualmente
 
       // FUNZIONI IMPORTANTI
       addTransaction, 
