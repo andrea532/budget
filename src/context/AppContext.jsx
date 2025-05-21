@@ -168,22 +168,44 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
+  // Helper per garantire che i valori siano numeri
+  const ensureNumber = (value, defaultValue = 0) => {
+    // Converte esplicitamente in numero, gestendo null, undefined, stringa vuota, etc.
+    const num = Number(value);
+    return isNaN(num) ? defaultValue : num;
+  };
+
+  // Helper per garantire che le spese abbiano importi numerici
+  const ensureNumberInExpenses = (expenses) => {
+    if (!Array.isArray(expenses)) return [];
+    
+    return expenses.map(expense => ({
+      ...expense,
+      amount: ensureNumber(expense.amount, 0)
+    }));
+  };
+
   // Funzione per salvare subito tutte le impostazioni
   const saveAllSettings = async () => {
     try {
       // Per mantenere la persistenza su PWA, aggiungiamo una voce in localStorage
       if (isPWA()) {
         localStorage.setItem('budget-app-saved', new Date().toISOString());
+        
+        // Salva anche valori critici in localStorage come backup
+        localStorage.setItem('budget-app-income', String(monthlyIncome));
+        localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
       }
       
       const settings = {
         id: 1, // ID fisso per le impostazioni
         userSettings,
-        monthlyIncome,
+        // Assicurati che i valori siano esplicitamente numeri
+        monthlyIncome: Number(monthlyIncome),
         lastPaydayDate,
         nextPaydayDate,
-        savingsPercentage,
-        streak,
+        savingsPercentage: Number(savingsPercentage),
+        streak: Number(streak),
         achievements
       };
       
@@ -203,11 +225,11 @@ export const AppProvider = ({ children }) => {
             const settingsRetry = {
               id: 1,
               userSettings,
-              monthlyIncome,
+              monthlyIncome: Number(monthlyIncome),
               lastPaydayDate,
               nextPaydayDate,
-              savingsPercentage,
-              streak,
+              savingsPercentage: Number(savingsPercentage),
+              streak: Number(streak),
               achievements
             };
             
@@ -263,13 +285,20 @@ export const AppProvider = ({ children }) => {
         
         if (settingsData && settingsData.length > 0) {
           const settings = settingsData[0];
+          
+          // Conversione esplicita di tutti i valori numerici per evitare problemi di tipo
           setUserSettings(settings.userSettings || userSettings);
-          setMonthlyIncome(settings.monthlyIncome || 0);
+          setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
           setLastPaydayDate(settings.lastPaydayDate || '');
           setNextPaydayDate(settings.nextPaydayDate || '');
-          setSavingsPercentage(settings.savingsPercentage || 10);
-          setStreak(settings.streak || 0);
+          setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
+          setStreak(ensureNumber(settings.streak, 0));
           setAchievements(settings.achievements || []);
+          
+          console.log('Dati caricati e convertiti:', {
+            monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
+            savingsPercentage: ensureNumber(settings.savingsPercentage, 10)
+          });
           
           // Imposta i colori del tema in base al themeId
           if (settings.userSettings && settings.userSettings.themeId) {
@@ -286,6 +315,24 @@ export const AppProvider = ({ children }) => {
           const savedTimestamp = localStorage.getItem('budget-app-saved');
           if (savedTimestamp) {
             console.log(`Ultimo salvataggio rilevato: ${savedTimestamp}`);
+            
+            // Recupera direttamente da localStorage i valori critici
+            const localIncome = localStorage.getItem('budget-app-income');
+            const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
+            
+            if (localIncome) {
+              setMonthlyIncome(ensureNumber(localIncome, 0));
+            }
+            
+            if (localSavingsPercentage) {
+              setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
+            }
+            
+            console.log("Recupero dati da localStorage:", {
+              monthlyIncome: ensureNumber(localIncome, 0),
+              savingsPercentage: ensureNumber(localSavingsPercentage, 10)
+            });
+            
             console.log("Tentativo di reinizializzazione DB");
             
             // Reinizializza e ritenta
@@ -296,11 +343,11 @@ export const AppProvider = ({ children }) => {
               console.log("Recupero dati riuscito al secondo tentativo");
               const settings = retrySettings[0];
               setUserSettings(settings.userSettings || userSettings);
-              setMonthlyIncome(settings.monthlyIncome || 0);
+              setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
               setLastPaydayDate(settings.lastPaydayDate || '');
               setNextPaydayDate(settings.nextPaydayDate || '');
-              setSavingsPercentage(settings.savingsPercentage || 10);
-              setStreak(settings.streak || 0);
+              setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
+              setStreak(ensureNumber(settings.streak, 0));
               setAchievements(settings.achievements || []);
               
               if (settings.userSettings && settings.userSettings.themeId) {
@@ -316,30 +363,43 @@ export const AppProvider = ({ children }) => {
         // Carica le transazioni
         const transactionsData = await getTransactions();
         if (transactionsData) {
-          setTransactions(transactionsData);
+          // Assicuriamo che tutti gli importi siano numeri
+          const processedTransactions = transactionsData.map(transaction => ({
+            ...transaction,
+            amount: ensureNumber(transaction.amount, 0)
+          }));
+          setTransactions(processedTransactions);
         }
         
         // Carica le spese fisse
         const fixedExpensesData = await getFixedExpenses();
         if (fixedExpensesData) {
-          setFixedExpenses(fixedExpensesData);
+          // Assicuriamo che tutti gli importi siano numeri
+          setFixedExpenses(ensureNumberInExpenses(fixedExpensesData));
         }
         
         // Carica le spese future
         const futureExpensesData = await getFutureExpenses();
         if (futureExpensesData) {
-          setFutureExpenses(futureExpensesData);
+          // Assicuriamo che tutti gli importi siano numeri
+          setFutureExpenses(ensureNumberInExpenses(futureExpensesData));
         }
         
         // Carica la cronologia risparmi
         const savingsData = await getSavingsHistory();
         if (savingsData) {
-          setSavingsHistory(savingsData);
+          // Assicuriamo che tutti gli importi siano numeri
+          const processedSavings = savingsData.map(entry => ({
+            ...entry,
+            amount: ensureNumber(entry.amount, 0),
+            total: ensureNumber(entry.total, 0)
+          }));
+          setSavingsHistory(processedSavings);
           
           // Calcola il totale dei risparmi
-          if (savingsData.length > 0) {
-            const lastSavingsEntry = savingsData[savingsData.length - 1];
-            setTotalSavings(lastSavingsEntry.total || 0);
+          if (processedSavings.length > 0) {
+            const lastSavingsEntry = processedSavings[processedSavings.length - 1];
+            setTotalSavings(ensureNumber(lastSavingsEntry.total, 0));
           }
         }
         
@@ -351,6 +411,18 @@ export const AppProvider = ({ children }) => {
         if (isPWA()) {
           console.log("Tentativo di fallback per PWA");
           try {
+            // Recupero da localStorage
+            const localIncome = localStorage.getItem('budget-app-income');
+            const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
+            
+            if (localIncome) {
+              setMonthlyIncome(ensureNumber(localIncome, 0));
+            }
+            
+            if (localSavingsPercentage) {
+              setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
+            }
+            
             // Forza la chiusura e reinizializzazione del DB
             await clearDatabase();
             await initDB();
@@ -363,11 +435,11 @@ export const AppProvider = ({ children }) => {
                   // Recupero dati...
                   const settings = retrySettings[0];
                   setUserSettings(settings.userSettings || userSettings);
-                  setMonthlyIncome(settings.monthlyIncome || 0);
+                  setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
                   setLastPaydayDate(settings.lastPaydayDate || '');
                   setNextPaydayDate(settings.nextPaydayDate || '');
-                  setSavingsPercentage(settings.savingsPercentage || 10);
-                  setStreak(settings.streak || 0);
+                  setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
+                  setStreak(ensureNumber(settings.streak, 0));
                   setAchievements(settings.achievements || []);
                 }
               } catch (e) {
@@ -394,10 +466,10 @@ export const AppProvider = ({ children }) => {
     if (isLoading) return;
     
     console.log("Rilevate modifiche alle impostazioni, salvataggio in corso...", {
-      monthlyIncome, 
+      monthlyIncome: ensureNumber(monthlyIncome), 
       lastPaydayDate, 
       nextPaydayDate, 
-      savingsPercentage, 
+      savingsPercentage: ensureNumber(savingsPercentage), 
       userSettings
     });
     
@@ -406,11 +478,11 @@ export const AppProvider = ({ children }) => {
         const settings = {
           id: 1, // ID fisso per le impostazioni
           userSettings,
-          monthlyIncome,
+          monthlyIncome: Number(monthlyIncome),
           lastPaydayDate,
           nextPaydayDate,
-          savingsPercentage,
-          streak,
+          savingsPercentage: Number(savingsPercentage),
+          streak: Number(streak),
           achievements
         };
         
@@ -420,6 +492,8 @@ export const AppProvider = ({ children }) => {
         // Per PWA, aggiorna anche localStorage come backup
         if (isPWA()) {
           localStorage.setItem('budget-app-saved', new Date().toISOString());
+          localStorage.setItem('budget-app-income', String(monthlyIncome));
+          localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
         }
       } catch (error) {
         console.error('Errore nel salvataggio delle impostazioni:', error);
@@ -499,7 +573,7 @@ export const AppProvider = ({ children }) => {
         daysUntilDue = Math.max(1, daysUntilDue);
         
         // Dividi l'importo per i giorni rimanenti
-        const dailyAmount = expense.amount / daysUntilDue;
+        const dailyAmount = ensureNumber(expense.amount, 0) / daysUntilDue;
         
         return total + dailyAmount;
       }
@@ -509,15 +583,15 @@ export const AppProvider = ({ children }) => {
   };
 
   const calculateDailyBudget = () => {
-    // Ottieni i valori necessari
-    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-    const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
+    // Forza la conversione esplicita di tutti i numeri
+    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + ensureNumber(expense.amount, 0), 0);
+    const savingsAmount = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
     
     // Calcola i giorni rimanenti fino al prossimo pagamento
     const daysUntilNextPayday = getDaysUntilPayday();
     
     // Budget totale disponibile per il periodo rimanente
-    const totalBudget = monthlyIncome - totalFixedExpenses - savingsAmount;
+    const totalBudget = ensureNumber(monthlyIncome, 0) - totalFixedExpenses - savingsAmount;
     
     // Budget giornaliero
     const dailyBudget = totalBudget / daysUntilNextPayday;
@@ -526,6 +600,18 @@ export const AppProvider = ({ children }) => {
     const dailyFutureExpenses = getDailyFutureExpenses();
     const finalBudget = dailyBudget - dailyFutureExpenses;
     
+    console.log('Calcolo budget: ', {
+      monthlyIncome: ensureNumber(monthlyIncome, 0),
+      savingsPercentage: ensureNumber(savingsPercentage, 0),
+      totalFixedExpenses,
+      savingsAmount,
+      daysUntilNextPayday,
+      totalBudget,
+      dailyBudget,
+      dailyFutureExpenses,
+      finalBudget
+    });
+    
     return finalBudget > 0 ? finalBudget : 0;
   };
 
@@ -533,14 +619,14 @@ export const AppProvider = ({ children }) => {
     const today = new Date().toDateString();
     return transactions
       .filter(transaction => new Date(transaction.date).toDateString() === today && transaction.type === 'expense')
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
+      .reduce((sum, transaction) => sum + ensureNumber(transaction.amount, 0), 0);
   };
 
   const getTodayIncome = () => {
     const today = new Date().toDateString();
     return transactions
       .filter(transaction => new Date(transaction.date).toDateString() === today && transaction.type === 'income')
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
+      .reduce((sum, transaction) => sum + ensureNumber(transaction.amount, 0), 0);
   };
 
   const getBudgetSurplus = () => {
@@ -551,8 +637,8 @@ export const AppProvider = ({ children }) => {
   };
 
   const getMonthlyAvailability = () => {
-    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-    const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
+    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + ensureNumber(expense.amount, 0), 0);
+    const savingsAmount = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     
@@ -563,9 +649,9 @@ export const AppProvider = ({ children }) => {
                tDate.getMonth() === currentMonth && 
                tDate.getFullYear() === currentYear;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
 
-    return monthlyIncome - totalFixedExpenses - savingsAmount - monthlyExpenses;
+    return ensureNumber(monthlyIncome, 0) - totalFixedExpenses - savingsAmount - monthlyExpenses;
   };
 
   // Sistema automatico per aggiungere risparmi mensili
@@ -583,7 +669,7 @@ export const AppProvider = ({ children }) => {
       // Se oggi è il giorno di paga
       if (today.getTime() === payday.getTime()) {
         // Calcola e aggiungi automaticamente il risparmio mensile
-        const monthlyAutomaticSavings = (monthlyIncome * savingsPercentage) / 100;
+        const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
         if (monthlyAutomaticSavings > 0) {
           addToSavings(monthlyAutomaticSavings, new Date().toISOString());
         }
@@ -619,7 +705,7 @@ export const AppProvider = ({ children }) => {
     const newTransaction = {
       ...transaction,
       id: Date.now(),
-      amount: parseFloat(transaction.amount),
+      amount: ensureNumber(transaction.amount, 0),
       type: transaction.type || 'expense'
     };
     
@@ -662,7 +748,11 @@ export const AppProvider = ({ children }) => {
       if (!currentTransaction) return;
       
       // Crea la transazione aggiornata
-      const updatedTransaction = { ...currentTransaction, ...updatedData };
+      const updatedTransaction = { 
+        ...currentTransaction, 
+        ...updatedData,
+        amount: ensureNumber(updatedData.amount, currentTransaction.amount)
+      };
       
       // Aggiorna nel database
       await dbUpdateTransaction(updatedTransaction);
@@ -705,7 +795,7 @@ export const AppProvider = ({ children }) => {
     const newExpense = {
       ...expense,
       id: Date.now(),
-      amount: parseFloat(expense.amount)
+      amount: ensureNumber(expense.amount, 0)
     };
     
     try {
@@ -761,6 +851,7 @@ export const AppProvider = ({ children }) => {
     const newExpense = {
       ...expense,
       id: Date.now(),
+      amount: ensureNumber(expense.amount, 0),
       createdAt: new Date().toISOString()
     };
     
@@ -788,7 +879,11 @@ export const AppProvider = ({ children }) => {
       if (!currentExpense) return;
       
       // Crea la spesa aggiornata
-      const updatedExpense = { ...currentExpense, ...updatedData };
+      const updatedExpense = { 
+        ...currentExpense, 
+        ...updatedData,
+        amount: ensureNumber(updatedData.amount, currentExpense.amount) 
+      };
       
       // Aggiorna nel database
       await dbUpdateFutureExpense(updatedExpense);
@@ -828,11 +923,12 @@ export const AppProvider = ({ children }) => {
 
   // Funzione per aggiungere ai risparmi
   const addToSavings = async (amount, date = new Date().toISOString()) => {
-    const newTotal = totalSavings + parseFloat(amount);
+    const parsedAmount = ensureNumber(amount, 0);
+    const newTotal = ensureNumber(totalSavings, 0) + parsedAmount;
     
     const newEntry = {
       id: Date.now(),
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       date,
       total: newTotal
     };
@@ -859,11 +955,12 @@ export const AppProvider = ({ children }) => {
 
   // Funzione per prelevare dai risparmi
   const withdrawFromSavings = async (amount, date = new Date().toISOString()) => {
-    const newTotal = totalSavings - parseFloat(amount);
+    const parsedAmount = ensureNumber(amount, 0);
+    const newTotal = ensureNumber(totalSavings, 0) - parsedAmount;
     
     const newEntry = {
       id: Date.now(),
-      amount: -parseFloat(amount),
+      amount: -parsedAmount,
       date,
       total: newTotal
     };
@@ -891,7 +988,7 @@ export const AppProvider = ({ children }) => {
     
     if (surplus >= 0) {
       // Incrementa streak
-      const newStreak = streak + 1;
+      const newStreak = ensureNumber(streak, 0) + 1;
       setStreak(newStreak);
       
       // Aggiungi achievement per streak milestone
@@ -908,11 +1005,12 @@ export const AppProvider = ({ children }) => {
 
   // Verifica achievement per risparmi
   const checkSavingsAchievements = (total) => {
-    if (total >= 100 && !hasAchievement('Primo traguardo di risparmio')) {
+    const parsedTotal = ensureNumber(total, 0);
+    if (parsedTotal >= 100 && !hasAchievement('Primo traguardo di risparmio')) {
       addAchievement('Primo traguardo di risparmio', 'Hai risparmiato i primi €100!');
-    } else if (total >= 500 && !hasAchievement('Risparmio considerevole')) {
+    } else if (parsedTotal >= 500 && !hasAchievement('Risparmio considerevole')) {
       addAchievement('Risparmio considerevole', 'Hai raggiunto €500 di risparmi!');
-    } else if (total >= 1000 && !hasAchievement('Risparmiatore esperto')) {
+    } else if (parsedTotal >= 1000 && !hasAchievement('Risparmiatore esperto')) {
       addAchievement('Risparmiatore esperto', 'Hai raggiunto €1000 di risparmi!');
     }
   };
@@ -953,16 +1051,16 @@ export const AppProvider = ({ children }) => {
       if (!categoryExpenses[t.categoryId]) {
         categoryExpenses[t.categoryId] = 0;
       }
-      categoryExpenses[t.categoryId] += t.amount;
+      categoryExpenses[t.categoryId] += ensureNumber(t.amount, 0);
     });
 
     return {
-      totalExpenses: expenses.reduce((sum, t) => sum + t.amount, 0),
-      totalIncome: income.reduce((sum, t) => sum + t.amount, 0),
+      totalExpenses: expenses.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0),
+      totalIncome: income.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0),
       transactionCount: monthlyTransactions.length,
-      averageExpense: expenses.length ? expenses.reduce((sum, t) => sum + t.amount, 0) / expenses.length : 0,
+      averageExpense: expenses.length ? expenses.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0) / expenses.length : 0,
       categoryBreakdown: categoryExpenses,
-      dailyAverageExpense: expenses.reduce((sum, t) => sum + t.amount, 0) / new Date().getDate()
+      dailyAverageExpense: expenses.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0) / new Date().getDate()
     };
   };
 
@@ -981,14 +1079,14 @@ export const AppProvider = ({ children }) => {
         const tDate = new Date(t.date);
         return t.type === 'expense' && tDate >= thisWeekStart;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
 
     const lastWeekExpenses = transactions
       .filter(t => {
         const tDate = new Date(t.date);
         return t.type === 'expense' && tDate >= lastWeekStart && tDate <= lastWeekEnd;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
 
     return {
       thisWeek: thisWeekExpenses,
@@ -1047,6 +1145,8 @@ export const AppProvider = ({ children }) => {
       // In PWA, cancella anche localStorage
       if (isPWA()) {
         localStorage.removeItem('budget-app-saved');
+        localStorage.removeItem('budget-app-income');
+        localStorage.removeItem('budget-app-savings-percentage');
       }
       
       setIsLoading(false);
