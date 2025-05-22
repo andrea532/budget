@@ -179,17 +179,31 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
-  // SOSTITUISCI questa funzione:
-const ensureNumber = (value, defaultValue = 0) => {
-  // CORREZIONE: Gestisce correttamente il caso quando value è 0
-  if (value === 0) return 0; // 0 è un valore valido
-  if (value === null || value === undefined || value === '') return defaultValue;
-  
-  const num = Number(value);
-  if (isNaN(num)) return defaultValue;
-  
-  return num;
-};
+  // CORREZIONE: Funzione ensureNumber che gestisce correttamente lo 0
+  const ensureNumber = (value, defaultValue = 0) => {
+    console.log("ensureNumber chiamato con:", value, "default:", defaultValue);
+    
+    // Se è esattamente 0, ritorna 0
+    if (value === 0) {
+      console.log("Valore è 0, ritorno 0");
+      return 0;
+    }
+    
+    // Se è null, undefined o stringa vuota, usa il default
+    if (value === null || value === undefined || value === '') {
+      console.log("Valore null/undefined/empty, ritorno default:", defaultValue);
+      return defaultValue;
+    }
+    
+    const num = Number(value);
+    if (isNaN(num)) {
+      console.log("Valore NaN, ritorno default:", defaultValue);
+      return defaultValue;
+    }
+    
+    console.log("Ritorno valore convertito:", num);
+    return num;
+  };
 
   // Helper per garantire che le spese abbiano importi numerici
   const ensureNumberInExpenses = (expenses) => {
@@ -348,26 +362,43 @@ const ensureNumber = (value, defaultValue = 0) => {
     }
   }, []);
 
-  // NUOVO: Funzione per salvare immediatamente (senza debounce)
+  // CORREZIONE: Funzione per salvare immediatamente (senza debounce)
   const saveAllSettingsImmediate = async () => {
     if (isLoading) return;
     
     try {
-      console.log("Salvataggio immediato delle impostazioni...");
-
-      const settings = {
+      console.log("=== SALVATAGGIO IMMEDIATO INIZIATO ===");
+      console.log("savingsPercentage prima del salvataggio:", savingsPercentage);
+      console.log("Tipo di savingsPercentage:", typeof savingsPercentage);
+      
+      const settingsToSave = {
         id: 1,
         userSettings,
-        monthlyIncome: Number(monthlyIncome),
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage: Number(savingsPercentage),
-        streak: Number(streak),
-        achievements
+        monthlyIncome: Number(monthlyIncome) || 0,
+        lastPaydayDate: lastPaydayDate || '',
+        nextPaydayDate: nextPaydayDate || '',
+        savingsPercentage: Number(savingsPercentage), // Forza la conversione ma mantiene 0
+        streak: Number(streak) || 0,
+        achievements: achievements || []
       };
-
-      await saveSettings(settings);
-      console.log("Salvataggio immediato completato");
+      
+      console.log("Dati da salvare:", settingsToSave);
+      console.log("savingsPercentage nel settings:", settingsToSave.savingsPercentage);
+      
+      await saveSettings(settingsToSave);
+      console.log("=== SALVATAGGIO COMPLETATO CON SUCCESSO ===");
+      
+      // Verifica immediata di cosa è stato salvato
+      setTimeout(async () => {
+        try {
+          const verificaSettings = await getSettings();
+          if (verificaSettings && verificaSettings[0]) {
+            console.log("VERIFICA - savingsPercentage salvato:", verificaSettings[0].savingsPercentage);
+          }
+        } catch (e) {
+          console.error("Errore nella verifica post-salvataggio:", e);
+        }
+      }, 500);
       
       // Se siamo in PWA, crea anche un backup
       if (isPWA() && backupStatus.autoBackupEnabled) {
@@ -376,41 +407,6 @@ const ensureNumber = (value, defaultValue = 0) => {
       
     } catch (error) {
       console.error('Errore nel salvataggio immediato:', error);
-    }
-  };
-
-  // TROVA questa funzione e AGGIUNGI il logging all'inizio:
-const saveAllSettingsImmediate = async () => {
-  if (isLoading) return;
-  
-  try {
-    console.log("Salvataggio immediato delle impostazioni...");
-    // AGGIUNGI queste righe:
-    console.log("Dati da salvare:", {
-      monthlyIncome: Number(monthlyIncome),
-      savingsPercentage: Number(savingsPercentage), // Questo mostrerà il valore reale
-      userSettings,
-      lastPaydayDate,
-      nextPaydayDate
-    });
-
-    const settings = {
-      id: 1,
-      userSettings,
-      monthlyIncome: Number(monthlyIncome),
-      lastPaydayDate,
-      nextPaydayDate,
-      savingsPercentage: Number(savingsPercentage), // Mantiene 0 se impostato
-      streak: Number(streak),
-      achievements
-    };
-
-    await saveSettings(settings);
-    console.log("Salvataggio immediato completato con successo");
-    
-    // resto della funzione rimane uguale...
-    } catch (error) {
-      console.error('Errore nel salvataggio delle impostazioni:', error);
       
       // Retry migliorato per PWA
       if (isPWA()) {
@@ -424,12 +420,12 @@ const saveAllSettingsImmediate = async () => {
             const settingsRetry = {
               id: 1,
               userSettings,
-              monthlyIncome: Number(monthlyIncome),
-              lastPaydayDate,
-              nextPaydayDate,
+              monthlyIncome: Number(monthlyIncome) || 0,
+              lastPaydayDate: lastPaydayDate || '',
+              nextPaydayDate: nextPaydayDate || '',
               savingsPercentage: Number(savingsPercentage),
-              streak: Number(streak),
-              achievements
+              streak: Number(streak) || 0,
+              achievements: achievements || []
             };
             
             await saveSettings(settingsRetry);
@@ -443,6 +439,39 @@ const saveAllSettingsImmediate = async () => {
           }
         }
       }
+    }
+  };
+
+  // Salva le impostazioni (con debounce)
+  const saveAllSettings = async () => {
+    if (isLoading) return;
+    
+    try {
+      console.log("Salvataggio settings con debounce:", {
+        monthlyIncome: ensureNumber(monthlyIncome), 
+        savingsPercentage: ensureNumber(savingsPercentage), 
+        userSettings
+      });
+
+      const settings = {
+        id: 1,
+        userSettings,
+        monthlyIncome: ensureNumber(monthlyIncome, 0),
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage: ensureNumber(savingsPercentage, 10), // CORREZIONE: default a 10, ma accetta 0
+        streak: ensureNumber(streak, 0),
+        achievements
+      };
+
+      await saveSettings(settings);
+      console.log("Impostazioni salvate con successo");
+      
+      if (isPWA() && backupStatus.autoBackupEnabled) {
+        setTimeout(createAutoBackup, 1000);
+      }
+    } catch (error) {
+      console.error('Errore nel salvataggio delle impostazioni:', error);
     }
   };
 
@@ -468,7 +497,7 @@ const saveAllSettingsImmediate = async () => {
     }, 500);
   };
 
-  // Funzione migliorata per il caricamento con fallback su localStorage
+  // CORREZIONE: Funzione migliorata per il caricamento con gestione corretta dello 0
   const loadDataWithFallback = async () => {
     try {
       setIsLoading(true);
@@ -486,36 +515,33 @@ const saveAllSettingsImmediate = async () => {
       let settingsData = await getSettings();
       console.log("Impostazioni caricate dal database:", settingsData);
       
-      // TROVA questa parte nella funzione loadDataWithFallback:
-if (settingsData && settingsData.length > 0) {
-  const settings = settingsData[0];
-  
-  setUserSettings(settings.userSettings || userSettings);
-  setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
-  setLastPaydayDate(settings.lastPaydayDate || '');
-  setNextPaydayDate(settings.nextPaydayDate || '');
-  
-  // SOSTITUISCI questa riga:
-  setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
-  
-  // CON queste righe:
-  const savedSavingsPercentage = settings.savingsPercentage;
-  if (typeof savedSavingsPercentage === 'number') {
-    setSavingsPercentage(savedSavingsPercentage); // Accetta anche 0
-    console.log('SavingsPercentage caricato:', savedSavingsPercentage);
-  } else {
-    setSavingsPercentage(10); // Default solo se non è un numero
-    console.log('SavingsPercentage impostato al default: 10');
-  }
-  
-  setStreak(ensureNumber(settings.streak, 0));
-  setAchievements(settings.achievements || []);
-  
-  console.log('Dati finali caricati:', {
-    monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
-    savingsPercentage: typeof savedSavingsPercentage === 'number' ? savedSavingsPercentage : 10,
-    setupCompleted: settings.userSettings?.setupCompleted
-  });
+      // CORREZIONE: Gestione corretta del caricamento che preserva lo 0
+      if (settingsData && settingsData.length > 0) {
+        const settings = settingsData[0];
+        
+        setUserSettings(settings.userSettings || userSettings);
+        setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
+        setLastPaydayDate(settings.lastPaydayDate || '');
+        setNextPaydayDate(settings.nextPaydayDate || '');
+        
+        // CORREZIONE CRITICA: Gestisce correttamente lo 0 per savingsPercentage
+        const savedSavingsPercentage = settings.savingsPercentage;
+        if (typeof savedSavingsPercentage === 'number') {
+          setSavingsPercentage(savedSavingsPercentage); // Accetta anche 0
+          console.log('SavingsPercentage caricato:', savedSavingsPercentage);
+        } else {
+          setSavingsPercentage(10); // Default solo se non è un numero
+          console.log('SavingsPercentage impostato al default: 10');
+        }
+        
+        setStreak(ensureNumber(settings.streak, 0));
+        setAchievements(settings.achievements || []);
+        
+        console.log('Dati finali caricati:', {
+          monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
+          savingsPercentage: typeof savedSavingsPercentage === 'number' ? savedSavingsPercentage : 10,
+          setupCompleted: settings.userSettings?.setupCompleted
+        });
         
         // Imposta i colori del tema
         if (settings.userSettings && settings.userSettings.themeId) {
@@ -644,40 +670,54 @@ if (settingsData && settingsData.length > 0) {
     }
   }, [userSettings.themeId, isLoading]);
 
-  // NUOVO: Backup automatico periodico
-  // TROVA questo useEffect (quello che gestisce nextPaydayDate):
-useEffect(() => {
-  if (isLoading) return;
-  
-  if (nextPaydayDate) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  // Sistema automatico per aggiungere risparmi mensili - CORRETTO
+  useEffect(() => {
+    if (isLoading) return;
     
-    const payday = new Date(nextPaydayDate);
-    payday.setHours(0, 0, 0, 0);
-    
-    if (today.getTime() === payday.getTime()) {
-      // SOSTITUISCI queste righe:
-      const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
-      if (monthlyAutomaticSavings > 0) {
-        addToSavings(monthlyAutomaticSavings, new Date().toISOString());
-      }
+    if (nextPaydayDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
-      // CON queste righe:
-      const currentSavingsPercentage = ensureNumber(savingsPercentage, 0);
-      if (currentSavingsPercentage > 0) {
-        const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * currentSavingsPercentage) / 100;
-        if (monthlyAutomaticSavings > 0) {
-          console.log(`Aggiunta automatica risparmi: €${monthlyAutomaticSavings} (${currentSavingsPercentage}%)`);
-          addToSavings(monthlyAutomaticSavings, new Date().toISOString());
+      const payday = new Date(nextPaydayDate);
+      payday.setHours(0, 0, 0, 0);
+      
+      if (today.getTime() === payday.getTime()) {
+        // CORREZIONE: Gestisce correttamente la percentuale 0
+        const currentSavingsPercentage = ensureNumber(savingsPercentage, 0);
+        if (currentSavingsPercentage > 0) {
+          const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * currentSavingsPercentage) / 100;
+          if (monthlyAutomaticSavings > 0) {
+            console.log(`Aggiunta automatica risparmi: €${monthlyAutomaticSavings} (${currentSavingsPercentage}%)`);
+            addToSavings(monthlyAutomaticSavings, new Date().toISOString());
+          }
+        } else {
+          console.log("Percentuale risparmio è 0%, nessun risparmio automatico aggiunto");
         }
-      } else {
-        console.log("Percentuale risparmio è 0%, nessun risparmio automatico aggiunto");
+        
+        const startDate = new Date(lastPaydayDate);
+        startDate.setHours(0, 0, 0, 0);
+        
+        const endDate = new Date(payday);
+        endDate.setHours(0, 0, 0, 0);
+        
+        let currentDate = new Date(startDate);
+        let diffDays = 0;
+        
+        while (currentDate <= endDate) {
+          diffDays++;
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        const nextNextPayday = new Date(endDate);
+        nextNextPayday.setDate(nextNextPayday.getDate() + diffDays);
+        
+        setLastPaydayDate(payday.toISOString().split('T')[0]);
+        setNextPaydayDate(nextNextPayday.toISOString().split('T')[0]);
       }
-      
-      // resto della funzione rimane uguale...
+    }
+  }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading, lastPaydayDate]);
 
-  // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET (invariate per brevità)
+  // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET
   const getDaysUntilPayday = () => {
     if (!nextPaydayDate) return 30;
     
@@ -764,46 +804,6 @@ useEffect(() => {
     const todayIncome = getTodayIncome();
     return dailyBudget - todayExpenses + todayIncome;
   };
-
-  // Sistema automatico per aggiungere risparmi mensili (invariato)
-  useEffect(() => {
-    if (isLoading) return;
-    
-    if (nextPaydayDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const payday = new Date(nextPaydayDate);
-      payday.setHours(0, 0, 0, 0);
-      
-      if (today.getTime() === payday.getTime()) {
-        const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
-        if (monthlyAutomaticSavings > 0) {
-          addToSavings(monthlyAutomaticSavings, new Date().toISOString());
-        }
-        
-        const startDate = new Date(lastPaydayDate);
-        startDate.setHours(0, 0, 0, 0);
-        
-        const endDate = new Date(payday);
-        endDate.setHours(0, 0, 0, 0);
-        
-        let currentDate = new Date(startDate);
-        let diffDays = 0;
-        
-        while (currentDate <= endDate) {
-          diffDays++;
-          currentDate.setDate(currentDate.getDate() + 1);
-        }
-        
-        const nextNextPayday = new Date(endDate);
-        nextNextPayday.setDate(nextNextPayday.getDate() + diffDays);
-        
-        setLastPaydayDate(payday.toISOString().split('T')[0]);
-        setNextPaydayDate(nextNextPayday.toISOString().split('T')[0]);
-      }
-    }
-  }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading, lastPaydayDate]);
 
   // Metodi per le transazioni (con salvataggio automatico migliorato)
   const addTransaction = async (transaction) => {
@@ -1037,7 +1037,7 @@ useEffect(() => {
     }
   };
 
-  // Funzioni per streak e achievement (invariate)
+  // Funzioni per streak e achievement
   const updateStreakAndAchievements = () => {
     const surplus = getBudgetSurplus();
     
@@ -1082,7 +1082,7 @@ useEffect(() => {
     setAchievements(prev => [...prev, newAchievement]);
   };
 
-  // Statistiche (invariate)
+  // Statistiche
   const getMonthlyStats = () => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
