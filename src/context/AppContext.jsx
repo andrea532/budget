@@ -483,23 +483,36 @@ const ensureNumber = (value, defaultValue = 0) => {
       let settingsData = await getSettings();
       console.log("Impostazioni caricate dal database:", settingsData);
       
-      // Processa i dati caricati
-      if (settingsData && settingsData.length > 0) {
-        const settings = settingsData[0];
-        
-        setUserSettings(settings.userSettings || userSettings);
-        setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
-        setLastPaydayDate(settings.lastPaydayDate || '');
-        setNextPaydayDate(settings.nextPaydayDate || '');
-        setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
-        setStreak(ensureNumber(settings.streak, 0));
-        setAchievements(settings.achievements || []);
-        
-        console.log('Dati finali caricati:', {
-          monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
-          savingsPercentage: ensureNumber(settings.savingsPercentage, 10),
-          setupCompleted: settings.userSettings?.setupCompleted
-        });
+      // TROVA questa parte nella funzione loadDataWithFallback:
+if (settingsData && settingsData.length > 0) {
+  const settings = settingsData[0];
+  
+  setUserSettings(settings.userSettings || userSettings);
+  setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
+  setLastPaydayDate(settings.lastPaydayDate || '');
+  setNextPaydayDate(settings.nextPaydayDate || '');
+  
+  // SOSTITUISCI questa riga:
+  setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
+  
+  // CON queste righe:
+  const savedSavingsPercentage = settings.savingsPercentage;
+  if (typeof savedSavingsPercentage === 'number') {
+    setSavingsPercentage(savedSavingsPercentage); // Accetta anche 0
+    console.log('SavingsPercentage caricato:', savedSavingsPercentage);
+  } else {
+    setSavingsPercentage(10); // Default solo se non è un numero
+    console.log('SavingsPercentage impostato al default: 10');
+  }
+  
+  setStreak(ensureNumber(settings.streak, 0));
+  setAchievements(settings.achievements || []);
+  
+  console.log('Dati finali caricati:', {
+    monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
+    savingsPercentage: typeof savedSavingsPercentage === 'number' ? savedSavingsPercentage : 10,
+    setupCompleted: settings.userSettings?.setupCompleted
+  });
         
         // Imposta i colori del tema
         if (settings.userSettings && settings.userSettings.themeId) {
