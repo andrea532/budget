@@ -17,41 +17,44 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     monthlyIncome,
     theme,
     setCurrentView,
-    saveAllSettingsImmediate, // Usando salvataggio immediato per risolvere il problema
+    saveAllSettingsImmediate,
     totalSavings,
     addToSavings,
     withdrawFromSavings,
     fixedExpenses,
   } = useContext(AppContext);
 
-  // CORREZIONE: Gestione corretta dello stato locale per supportare anche 0
+  // CORREZIONE: Gestione migliorata dello stato locale
   const [localSavingsPercentage, setLocalSavingsPercentage] = useState(() => {
-    // Assicura che anche 0 sia gestito correttamente
-    return typeof savingsPercentage === 'number' ? savingsPercentage : 10;
+    const contextValue = typeof savingsPercentage === 'number' ? savingsPercentage : 10;
+    console.log("SavingsSetup: Inizializzazione con valore:", contextValue);
+    return contextValue;
   });
   
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [savingsAmount, setSavingsAmount] = useState('');
-  const [savingsAction, setSavingsAction] = useState('add'); // 'add' o 'withdraw'
+  const [savingsAction, setSavingsAction] = useState('add');
   const [showSavingsForm, setShowSavingsForm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // CORREZIONE: Sincronizzazione migliorata che gestisce correttamente lo 0
+  // CORREZIONE: Sincronizzazione migliorata con il context
   useEffect(() => {
-    console.log("SavingsSetup: savingsPercentage dal context:", savingsPercentage);
-    // Usa solo typeof per verificare se è un numero, permettendo 0
-    if (typeof savingsPercentage === 'number') {
+    console.log("SavingsSetup: savingsPercentage dal context cambiato:", savingsPercentage);
+    if (typeof savingsPercentage === 'number' && !isSaving) {
+      console.log("SavingsSetup: Aggiornamento localSavingsPercentage a:", savingsPercentage);
       setLocalSavingsPercentage(savingsPercentage);
-      console.log("SavingsSetup: localSavingsPercentage aggiornato a:", savingsPercentage);
     }
-  }, [savingsPercentage]);
+  }, [savingsPercentage, isSaving]);
 
-  // CORREZIONE: Log per debugging
+  // CORREZIONE: Debug logging migliorato
   useEffect(() => {
-    console.log("SavingsSetup: stato corrente", {
-      savingsPercentage,
-      localSavingsPercentage,
-      monthlyIncome
+    console.log("SavingsSetup: Stato corrente", {
+      savingsPercentage: savingsPercentage,
+      localSavingsPercentage: localSavingsPercentage,
+      monthlyIncome: monthlyIncome,
+      typeof_savingsPercentage: typeof savingsPercentage,
+      typeof_localSavingsPercentage: typeof localSavingsPercentage
     });
   }, [savingsPercentage, localSavingsPercentage, monthlyIncome]);
 
@@ -79,7 +82,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     },
   };
 
-  // Calcola l'importo mensile del risparmio - CORREZIONE: gestisce 0 correttamente
+  // Calcola l'importo mensile del risparmio
   const calculateMonthlySavings = () => {
     const income = typeof monthlyIncome === 'number' ? monthlyIncome : 0;
     const percentage = typeof localSavingsPercentage === 'number' ? localSavingsPercentage : 0;
@@ -96,43 +99,91 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     return income - totalFixedExpenses - monthlySavings;
   };
 
-  // CORREZIONE: Gestione del salvataggio migliorata
+  // CORREZIONE: Gestione del salvataggio completamente rivista
   const handleSave = async () => {
-    console.log("SavingsSetup: salvando con localSavingsPercentage:", localSavingsPercentage);
-    
-    // Imposta immediatamente nel context
-    setSavingsPercentage(localSavingsPercentage);
-    
-    // Forza un salvataggio immediato
+    if (isSaving) {
+      console.log("SavingsSetup: Salvataggio già in corso, ignoro");
+      return;
+    }
+
     try {
+      setIsSaving(true);
+      console.log("=== SavingsSetup: INIZIO SALVATAGGIO ===");
+      console.log("SavingsSetup: Salvando localSavingsPercentage:", localSavingsPercentage);
+      console.log("SavingsSetup: Tipo di localSavingsPercentage:", typeof localSavingsPercentage);
+      
+      // STEP 1: Aggiorna immediatamente il context
+      console.log("SavingsSetup: Step 1 - Aggiornamento context");
+      setSavingsPercentage(localSavingsPercentage);
+      
+      // STEP 2: Attendi un momento per assicurarsi che il context sia aggiornato
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // STEP 3: Forza il salvataggio immediato
+      console.log("SavingsSetup: Step 3 - Salvataggio immediato");
       await saveAllSettingsImmediate();
-      console.log("SavingsSetup: salvataggio completato");
-    } catch (error) {
-      console.error("SavingsSetup: errore nel salvataggio:", error);
-    }
-    
-    // Per PWA, doppio salvataggio per sicurezza
-    if (isPWA()) {
-      setTimeout(async () => {
-        try {
-          console.log("SavingsSetup: secondo tentativo di salvataggio PWA");
-          await saveAllSettingsImmediate();
-        } catch (error) {
-          console.error("SavingsSetup: secondo salvataggio fallito:", error);
-        }
-      }, 1000);
-    }
-
-    // Mostra animazione di successo
-    setShowSuccess(true);
-
-    setTimeout(() => {
-      if (isInitialSetup && onComplete) {
-        onComplete(localSavingsPercentage);
-      } else {
-        setCurrentView('dashboard');
+      
+      // STEP 4: Per PWA, effettua controlli aggiuntivi
+      if (isPWA()) {
+        console.log("SavingsSetup: Step 4 - Controlli aggiuntivi PWA");
+        
+        // Secondo salvataggio dopo un breve ritardo
+        setTimeout(async () => {
+          try {
+            console.log("SavingsSetup: Secondo salvataggio PWA");
+            await saveAllSettingsImmediate();
+            
+            // Backup in localStorage per sicurezza
+            const backupData = {
+              savingsPercentage: localSavingsPercentage,
+              timestamp: new Date().toISOString()
+            };
+            localStorage.setItem('savings-backup', JSON.stringify(backupData));
+            console.log("SavingsSetup: Backup localStorage creato");
+            
+          } catch (error) {
+            console.error("SavingsSetup: Errore nel secondo salvataggio PWA:", error);
+          }
+        }, 1000);
+        
+        // Terzo salvataggio dopo 3 secondi
+        setTimeout(async () => {
+          try {
+            console.log("SavingsSetup: Terzo salvataggio PWA (verifica)");
+            await saveAllSettingsImmediate();
+          } catch (error) {
+            console.error("SavingsSetup: Errore nel terzo salvataggio PWA:", error);
+          }
+        }, 3000);
       }
-    }, 800);
+
+      // STEP 5: Mostra animazione di successo
+      console.log("SavingsSetup: Step 5 - Mostra successo");
+      setShowSuccess(true);
+
+      // STEP 6: Completa il processo
+      setTimeout(() => {
+        console.log("SavingsSetup: Step 6 - Completamento");
+        setShowSuccess(false);
+        
+        if (isInitialSetup && onComplete) {
+          onComplete(localSavingsPercentage);
+        } else {
+          setCurrentView('dashboard');
+        }
+        
+        setIsSaving(false);
+      }, 1500);
+
+      console.log("=== SavingsSetup: SALVATAGGIO COMPLETATO ===");
+      
+    } catch (error) {
+      console.error("SavingsSetup: Errore durante il salvataggio:", error);
+      setIsSaving(false);
+      
+      // Mostra errore all'utente
+      alert("Errore nel salvataggio. Riprova.");
+    }
   };
 
   // Gestisce l'aggiunta/prelievo di risparmi
@@ -150,7 +201,20 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     setShowSavingsForm(false);
   };
 
-  // Percentuali preimpostate - CORREZIONE: aggiunto 0%
+  // CORREZIONE: Gestione del cambiamento dello slider migliorata
+  const handleSliderChange = (newValue) => {
+    const numericValue = parseInt(newValue);
+    console.log("SavingsSetup: Slider cambiato a:", numericValue);
+    setLocalSavingsPercentage(numericValue);
+  };
+
+  // CORREZIONE: Gestione del click sui preset migliorata
+  const handlePresetClick = (percentage) => {
+    console.log("SavingsSetup: Preset cliccato:", percentage);
+    setLocalSavingsPercentage(percentage);
+  };
+
+  // Percentuali preimpostate
   const presetPercentages = [0, 5, 10, 15, 20, 25];
 
   return (
@@ -465,7 +529,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           )}
         </AnimatePresence>
 
-        {/* CORREZIONE: Debug info per vedere lo stato */}
+        {/* Debug info per sviluppo */}
         {process.env.NODE_ENV === 'development' && (
           <motion.div
             variants={itemVariants}
@@ -478,7 +542,11 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               color: theme.text,
             }}
           >
-            <strong>Debug:</strong> Context: {savingsPercentage}% | Local: {localSavingsPercentage}%
+            <strong>Debug:</strong><br/>
+            Context: {savingsPercentage}% (tipo: {typeof savingsPercentage})<br/>
+            Local: {localSavingsPercentage}% (tipo: {typeof localSavingsPercentage})<br/>
+            Saving: {isSaving ? 'Yes' : 'No'}<br/>
+            PWA: {isPWA() ? 'Yes' : 'No'}
           </motion.div>
         )}
 
@@ -530,11 +598,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               min="0"
               max="50"
               value={localSavingsPercentage}
-              onChange={(e) => {
-                const newValue = parseInt(e.target.value);
-                console.log("SavingsSetup: slider cambiato a:", newValue);
-                setLocalSavingsPercentage(newValue);
-              }}
+              onChange={(e) => handleSliderChange(e.target.value)}
+              disabled={isSaving}
               style={{
                 width: '100%',
                 height: '8px',
@@ -542,12 +607,13 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                 background: `linear-gradient(to right, ${theme.secondary} 0%, ${theme.secondary} ${localSavingsPercentage * 2}%, ${theme.background} ${localSavingsPercentage * 2}%, ${theme.background} 100%)`,
                 outline: 'none',
                 appearance: 'none',
-                cursor: 'pointer',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
+                opacity: isSaving ? 0.5 : 1,
               }}
             />
           </div>
 
-          {/* Preset Percentages - CORREZIONE: include 0% */}
+          {/* Preset Percentages */}
           <div
             style={{
               display: 'flex',
@@ -559,12 +625,10 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             {presetPercentages.map((percentage) => (
               <motion.button
                 key={percentage}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  console.log("SavingsSetup: preset cliccato:", percentage);
-                  setLocalSavingsPercentage(percentage);
-                }}
+                whileHover={{ scale: isSaving ? 1 : 1.05 }}
+                whileTap={{ scale: isSaving ? 1 : 0.95 }}
+                onClick={() => !isSaving && handlePresetClick(percentage)}
+                disabled={isSaving}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '12px',
@@ -583,7 +647,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                       : theme.text,
                   fontWeight: '500',
                   fontSize: '14px',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  opacity: isSaving ? 0.5 : 1,
                 }}
               >
                 {percentage}%
@@ -676,6 +741,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowAdvanced(!showAdvanced)}
+            disabled={isSaving}
             style={{
               width: '100%',
               padding: '12px',
@@ -685,12 +751,13 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               border: `1px solid ${theme.border}`,
               fontSize: '14px',
               fontWeight: '500',
-              cursor: 'pointer',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
               marginBottom: '16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
+              opacity: isSaving ? 0.5 : 1,
             }}
           >
             <Info size={16} />
@@ -756,23 +823,50 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
         {/* Save Button */}
         <motion.button
           variants={itemVariants}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: isSaving ? 1 : 1.02 }}
+          whileTap={{ scale: isSaving ? 1 : 0.98 }}
           onClick={handleSave}
+          disabled={isSaving}
           style={{
             width: '100%',
             padding: '16px',
             borderRadius: '16px',
-            background: `linear-gradient(135deg, ${theme.secondary} 0%, #27AE60 100%)`,
+            background: isSaving 
+              ? theme.border
+              : `linear-gradient(135deg, ${theme.secondary} 0%, #27AE60 100%)`,
             color: 'white',
             fontSize: '16px',
             fontWeight: '600',
             border: 'none',
-            cursor: 'pointer',
+            cursor: isSaving ? 'not-allowed' : 'pointer',
             marginTop: '16px',
+            opacity: isSaving ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
           }}
         >
-          {isInitialSetup ? 'Completa configurazione' : 'Salva impostazioni'}
+          {isSaving ? (
+            <>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  border: '2px solid white',
+                  borderTop: '2px solid transparent',
+                  borderRadius: '50%'
+                }}
+              />
+              Salvataggio...
+            </>
+          ) : (
+            <>
+              {isInitialSetup ? 'Completa configurazione' : 'Salva impostazioni'}
+            </>
+          )}
         </motion.button>
 
         {/* Navigation - solo se non è la configurazione iniziale */}
@@ -790,32 +884,36 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           >
             <button
               onClick={() => setCurrentView('expenses')}
+              disabled={isSaving}
               style={{
                 fontSize: '14px',
                 fontWeight: '500',
                 color: theme.textSecondary,
                 background: 'none',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
                 padding: '8px',
+                opacity: isSaving ? 0.5 : 1,
               }}
             >
               Indietro
             </button>
 
             <button
-              onClick={() => setCurrentView('dashboard')}
+              onClick={() => !isSaving && setCurrentView('dashboard')}
+              disabled={isSaving}
               style={{
                 fontSize: '14px',
                 fontWeight: '500',
                 color: theme.primary,
                 background: 'none',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
                 padding: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
+                opacity: isSaving ? 0.5 : 1,
               }}
             >
               Dashboard
