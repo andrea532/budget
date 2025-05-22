@@ -645,15 +645,37 @@ if (settingsData && settingsData.length > 0) {
   }, [userSettings.themeId, isLoading]);
 
   // NUOVO: Backup automatico periodico
-  useEffect(() => {
-    if (isPWA() && backupStatus.autoBackupEnabled && !isLoading) {
-      const backupInterval = setInterval(() => {
-        createAutoBackup();
-      }, 15 * 60 * 1000); // Ogni 15 minuti
+  // TROVA questo useEffect (quello che gestisce nextPaydayDate):
+useEffect(() => {
+  if (isLoading) return;
+  
+  if (nextPaydayDate) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const payday = new Date(nextPaydayDate);
+    payday.setHours(0, 0, 0, 0);
+    
+    if (today.getTime() === payday.getTime()) {
+      // SOSTITUISCI queste righe:
+      const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
+      if (monthlyAutomaticSavings > 0) {
+        addToSavings(monthlyAutomaticSavings, new Date().toISOString());
+      }
       
-      return () => clearInterval(backupInterval);
-    }
-  }, [isPWA(), backupStatus.autoBackupEnabled, isLoading]);
+      // CON queste righe:
+      const currentSavingsPercentage = ensureNumber(savingsPercentage, 0);
+      if (currentSavingsPercentage > 0) {
+        const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * currentSavingsPercentage) / 100;
+        if (monthlyAutomaticSavings > 0) {
+          console.log(`Aggiunta automatica risparmi: €${monthlyAutomaticSavings} (${currentSavingsPercentage}%)`);
+          addToSavings(monthlyAutomaticSavings, new Date().toISOString());
+        }
+      } else {
+        console.log("Percentuale risparmio è 0%, nessun risparmio automatico aggiunto");
+      }
+      
+      // resto della funzione rimane uguale...
 
   // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET (invariate per brevità)
   const getDaysUntilPayday = () => {
