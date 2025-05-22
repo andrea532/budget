@@ -179,6 +179,8 @@ export const AppProvider = ({ children }) => {
       ...prev,
       setupCompleted: true
     }));
+    // Salva immediatamente dopo il setup
+    setTimeout(saveAllSettings, 100);
   };
 
   // Caricamento dati semplificato
@@ -354,6 +356,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddTransaction(newTransaction);
       setTransactions(prev => [newTransaction, ...prev]);
+      // Salva le impostazioni dopo aver aggiunto una transazione
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiunta transazione:', error);
     }
@@ -374,6 +378,8 @@ export const AppProvider = ({ children }) => {
       setTransactions(prev => 
         prev.map(t => t.id === id ? updated : t)
       );
+      // Salva le impostazioni dopo l'aggiornamento
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiornamento transazione:', error);
     }
@@ -383,6 +389,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteTransaction(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
+      // Salva le impostazioni dopo l'eliminazione
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore eliminazione transazione:', error);
     }
@@ -399,6 +407,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddFixedExpense(newExpense);
       setFixedExpenses(prev => [...prev, newExpense]);
+      // Salva le impostazioni dopo aver aggiunto una spesa fissa
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiunta spesa fissa:', error);
     }
@@ -408,6 +418,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteFixedExpense(id);
       setFixedExpenses(prev => prev.filter(e => e.id !== id));
+      // Salva le impostazioni dopo l'eliminazione
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore eliminazione spesa fissa:', error);
     }
@@ -424,6 +436,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddFutureExpense(newExpense);
       setFutureExpenses(prev => [...prev, newExpense]);
+      // Salva le impostazioni dopo aver aggiunto una spesa futura
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiunta spesa futura:', error);
     }
@@ -444,6 +458,8 @@ export const AppProvider = ({ children }) => {
       setFutureExpenses(prev => 
         prev.map(e => e.id === id ? updated : e)
       );
+      // Salva le impostazioni dopo l'aggiornamento
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiornamento spesa futura:', error);
     }
@@ -453,6 +469,8 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteFutureExpense(id);
       setFutureExpenses(prev => prev.filter(e => e.id !== id));
+      // Salva le impostazioni dopo l'eliminazione
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore eliminazione spesa futura:', error);
     }
@@ -474,6 +492,8 @@ export const AppProvider = ({ children }) => {
       await dbAddSavingsEntry(newEntry);
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
+      // Salva le impostazioni dopo aver aggiunto ai risparmi
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore aggiunta risparmio:', error);
     }
@@ -494,6 +514,8 @@ export const AppProvider = ({ children }) => {
       await dbAddSavingsEntry(newEntry);
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
+      // Salva le impostazioni dopo il prelievo
+      setTimeout(saveAllSettings, 100);
     } catch (error) {
       console.error('Errore prelievo risparmio:', error);
     }
