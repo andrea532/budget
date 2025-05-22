@@ -17,24 +17,43 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     monthlyIncome,
     theme,
     setCurrentView,
-    saveAllSettings,
+    saveAllSettingsImmediate, // Usando salvataggio immediato per risolvere il problema
     totalSavings,
     addToSavings,
     withdrawFromSavings,
     fixedExpenses,
   } = useContext(AppContext);
 
-  const [localSavingsPercentage, setLocalSavingsPercentage] = useState(savingsPercentage);
+  // CORREZIONE: Gestione corretta dello stato locale per supportare anche 0
+  const [localSavingsPercentage, setLocalSavingsPercentage] = useState(() => {
+    // Assicura che anche 0 sia gestito correttamente
+    return typeof savingsPercentage === 'number' ? savingsPercentage : 10;
+  });
+  
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [savingsAmount, setSavingsAmount] = useState('');
   const [savingsAction, setSavingsAction] = useState('add'); // 'add' o 'withdraw'
   const [showSavingsForm, setShowSavingsForm] = useState(false);
 
-  // Sincronizza lo stato locale con il context
+  // CORREZIONE: Sincronizzazione migliorata che gestisce correttamente lo 0
   useEffect(() => {
-    setLocalSavingsPercentage(savingsPercentage);
+    console.log("SavingsSetup: savingsPercentage dal context:", savingsPercentage);
+    // Usa solo typeof per verificare se è un numero, permettendo 0
+    if (typeof savingsPercentage === 'number') {
+      setLocalSavingsPercentage(savingsPercentage);
+      console.log("SavingsSetup: localSavingsPercentage aggiornato a:", savingsPercentage);
+    }
   }, [savingsPercentage]);
+
+  // CORREZIONE: Log per debugging
+  useEffect(() => {
+    console.log("SavingsSetup: stato corrente", {
+      savingsPercentage,
+      localSavingsPercentage,
+      monthlyIncome
+    });
+  }, [savingsPercentage, localSavingsPercentage, monthlyIncome]);
 
   // Animazioni
   const containerVariants = {
@@ -60,34 +79,49 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     },
   };
 
-  // Calcola l'importo mensile del risparmio
+  // Calcola l'importo mensile del risparmio - CORREZIONE: gestisce 0 correttamente
   const calculateMonthlySavings = () => {
-    return (monthlyIncome * localSavingsPercentage) / 100;
+    const income = typeof monthlyIncome === 'number' ? monthlyIncome : 0;
+    const percentage = typeof localSavingsPercentage === 'number' ? localSavingsPercentage : 0;
+    return (income * percentage) / 100;
   };
 
   // Calcola l'importo disponibile dopo spese fisse e risparmi
   const calculateAvailableAmount = () => {
-    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const income = typeof monthlyIncome === 'number' ? monthlyIncome : 0;
+    const totalFixedExpenses = Array.isArray(fixedExpenses) 
+      ? fixedExpenses.reduce((sum, expense) => sum + (typeof expense.amount === 'number' ? expense.amount : 0), 0)
+      : 0;
     const monthlySavings = calculateMonthlySavings();
-    return monthlyIncome - totalFixedExpenses - monthlySavings;
+    return income - totalFixedExpenses - monthlySavings;
   };
 
-  // Gestisce il salvataggio delle impostazioni
-  const handleSave = () => {
+  // CORREZIONE: Gestione del salvataggio migliorata
+  const handleSave = async () => {
+    console.log("SavingsSetup: salvando con localSavingsPercentage:", localSavingsPercentage);
+    
+    // Imposta immediatamente nel context
     setSavingsPercentage(localSavingsPercentage);
     
-    // Forza un salvataggio
-    setTimeout(() => {
-      saveAllSettings();
-      
-      // Per PWA, effettua un secondo tentativo
-      if (isPWA()) {
-        setTimeout(() => {
-          console.log("Secondo tentativo di salvataggio in PWA (SavingsSetup)");
-          saveAllSettings();
-        }, 1000);
-      }
-    }, 200);
+    // Forza un salvataggio immediato
+    try {
+      await saveAllSettingsImmediate();
+      console.log("SavingsSetup: salvataggio completato");
+    } catch (error) {
+      console.error("SavingsSetup: errore nel salvataggio:", error);
+    }
+    
+    // Per PWA, doppio salvataggio per sicurezza
+    if (isPWA()) {
+      setTimeout(async () => {
+        try {
+          console.log("SavingsSetup: secondo tentativo di salvataggio PWA");
+          await saveAllSettingsImmediate();
+        } catch (error) {
+          console.error("SavingsSetup: secondo salvataggio fallito:", error);
+        }
+      }, 1000);
+    }
 
     // Mostra animazione di successo
     setShowSuccess(true);
@@ -116,8 +150,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     setShowSavingsForm(false);
   };
 
-  // Percentuali preimpostate
-  const presetPercentages = [5, 10, 15, 20, 25];
+  // Percentuali preimpostate - CORREZIONE: aggiunto 0%
+  const presetPercentages = [0, 5, 10, 15, 20, 25];
 
   return (
     <motion.div
@@ -260,7 +294,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                 marginBottom: '12px',
               }}
             >
-              € {totalSavings.toFixed(2)}
+              € {(typeof totalSavings === 'number' ? totalSavings : 0).toFixed(2)}
             </motion.p>
             
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -431,6 +465,23 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           )}
         </AnimatePresence>
 
+        {/* CORREZIONE: Debug info per vedere lo stato */}
+        {process.env.NODE_ENV === 'development' && (
+          <motion.div
+            variants={itemVariants}
+            style={{
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: `${theme.warning}15`,
+              marginBottom: '16px',
+              fontSize: '12px',
+              color: theme.text,
+            }}
+          >
+            <strong>Debug:</strong> Context: {savingsPercentage}% | Local: {localSavingsPercentage}%
+          </motion.div>
+        )}
+
         {/* Percentage Selection */}
         <motion.div variants={itemVariants} style={{ marginBottom: '24px' }}>
           <h3
@@ -479,7 +530,11 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
               min="0"
               max="50"
               value={localSavingsPercentage}
-              onChange={(e) => setLocalSavingsPercentage(parseInt(e.target.value))}
+              onChange={(e) => {
+                const newValue = parseInt(e.target.value);
+                console.log("SavingsSetup: slider cambiato a:", newValue);
+                setLocalSavingsPercentage(newValue);
+              }}
               style={{
                 width: '100%',
                 height: '8px',
@@ -492,7 +547,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             />
           </div>
 
-          {/* Preset Percentages */}
+          {/* Preset Percentages - CORREZIONE: include 0% */}
           <div
             style={{
               display: 'flex',
@@ -506,7 +561,10 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                 key={percentage}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setLocalSavingsPercentage(percentage)}
+                onClick={() => {
+                  console.log("SavingsSetup: preset cliccato:", percentage);
+                  setLocalSavingsPercentage(percentage);
+                }}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '12px',
@@ -678,6 +736,9 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
                     </li>
                     <li style={{ marginBottom: '8px' }}>
                       Inizia con una percentuale bassa e aumentala gradualmente
+                    </li>
+                    <li style={{ marginBottom: '8px' }}>
+                      Anche risparmiare lo 0% va bene se hai appena iniziato
                     </li>
                     <li style={{ marginBottom: '8px' }}>
                       Automatizza i tuoi risparmi per non dimenticartene
