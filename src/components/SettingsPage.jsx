@@ -49,12 +49,12 @@ const SettingsPage = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmationStep, setResetConfirmationStep] = useState(1);
   
-  // NUOVO: Stati per gestione backup
+  // Stati per gestione backup
   const [backupInfo, setBackupInfo] = useState({ exists: false });
   const [showBackupDetails, setShowBackupDetails] = useState(false);
   const [backupOperationStatus, setBackupOperationStatus] = useState('');
 
-  // NUOVO: Carica informazioni backup all'avvio
+  // Carica informazioni backup all'avvio
   useEffect(() => {
     loadBackupInfo();
   }, []);
@@ -63,17 +63,17 @@ const SettingsPage = () => {
     try {
       const info = getBackupInfo();
       setBackupInfo(info);
-      console.log("Informazioni backup caricate:", info);
+      console.log("✅ Informazioni backup caricate:", info);
     } catch (error) {
-      console.error("Errore nel caricamento info backup:", error);
+      console.error("❌ Errore caricamento info backup:", error);
     }
   };
 
-  // NUOVO: Crea backup manuale
+  // Crea backup manuale
   const handleCreateBackup = async () => {
     setBackupOperationStatus('creating');
     try {
-      console.log("Creazione backup manuale...");
+      console.log("🔄 Creazione backup manuale...");
       const backup = await createManualBackup();
       
       if (backup) {
@@ -87,45 +87,51 @@ const SettingsPage = () => {
         }));
         
         setTimeout(() => setBackupOperationStatus(''), 3000);
+        console.log("✅ Backup creato con successo");
       } else {
         throw new Error('Backup non creato');
       }
     } catch (error) {
-      console.error("Errore nella creazione del backup:", error);
+      console.error("❌ Errore nella creazione del backup:", error);
       setBackupOperationStatus('error');
       setTimeout(() => setBackupOperationStatus(''), 3000);
     }
   };
 
-  // NUOVO: Verifica integrità dati
+  // Verifica integrità dati
   const handleVerifyData = async () => {
     setBackupOperationStatus('verifying');
     try {
       const result = await verifyDataIntegrity();
       if (result) {
-        setBackupOperationStatus('restored');
-      } else {
         setBackupOperationStatus('verified');
+        console.log("✅ Dati verificati");
+      } else {
+        setBackupOperationStatus('error');
+        console.log("❌ Errore verifica dati");
       }
       setTimeout(() => setBackupOperationStatus(''), 3000);
     } catch (error) {
-      console.error("Errore nella verifica dati:", error);
+      console.error("❌ Errore nella verifica dati:", error);
       setBackupOperationStatus('error');
       setTimeout(() => setBackupOperationStatus(''), 3000);
     }
   };
 
-  // NUOVO: Toggle backup automatico
+  // Toggle backup automatico
   const toggleAutoBackup = () => {
+    const newValue = !backupStatus.autoBackupEnabled;
     setBackupStatus(prev => ({
       ...prev,
-      autoBackupEnabled: !prev.autoBackupEnabled
+      autoBackupEnabled: newValue
     }));
     
     setUserSettings(prev => ({
       ...prev,
-      autoBackupEnabled: !backupStatus.autoBackupEnabled
+      autoBackupEnabled: newValue
     }));
+    
+    console.log(newValue ? "✅ Backup automatico attivato" : "❌ Backup automatico disattivato");
   };
 
   // Opzioni di tema disponibili
@@ -155,18 +161,6 @@ const SettingsPage = () => {
       darkCard: '#252E25',
     },
     { 
-      id: 'dark', 
-      name: 'Grigio Scuro', 
-      primary: '#455A64', 
-      secondary: '#607D8B',
-      danger: '#F44336',
-      warning: '#FFB74D',
-      background: '#ECEFF1',
-      card: '#FFFFFF',
-      darkBackground: '#1A1A1D',
-      darkCard: '#282831',
-    },
-    { 
       id: 'purple', 
       name: 'Viola', 
       primary: '#9C27B0', 
@@ -177,31 +171,7 @@ const SettingsPage = () => {
       card: '#FFFFFF',
       darkBackground: '#22162B',
       darkCard: '#341C42',
-    },
-    { 
-      id: 'pink', 
-      name: 'Rosa', 
-      primary: '#E91E63', 
-      secondary: '#FF4081',
-      danger: '#FF5252',
-      warning: '#FFB74D',
-      background: '#FCE4EC',
-      card: '#FFFFFF',
-      darkBackground: '#2A151E',
-      darkCard: '#3D1F2D',
-    },
-    { 
-      id: 'teal', 
-      name: 'Turchese', 
-      primary: '#009688', 
-      secondary: '#26A69A',
-      danger: '#F44336',
-      warning: '#FFB74D',
-      background: '#E0F2F1',
-      card: '#FFFFFF',
-      darkBackground: '#0F2A29',
-      darkCard: '#1A3D3A',
-    },
+    }
   ];
 
   // Animazioni
@@ -246,6 +216,7 @@ const SettingsPage = () => {
     
     updateThemeColors(themeId);
     setShowThemeSelector(false);
+    console.log(`✅ Tema cambiato a: ${themeId}`);
   };
 
   const toggleDarkMode = () => {
@@ -253,6 +224,7 @@ const SettingsPage = () => {
       ...prev,
       darkMode: !prev.darkMode,
     }));
+    console.log(`✅ Modalità scura: ${!userSettings.darkMode ? 'attivata' : 'disattivata'}`);
   };
 
   const toggleNotifications = () => {
@@ -260,19 +232,21 @@ const SettingsPage = () => {
       ...prev,
       notifications: !prev.notifications,
     }));
+    console.log(`✅ Notifiche: ${!userSettings.notifications ? 'attivate' : 'disattivate'}`);
   };
 
   const handleResetApp = () => {
     if (resetConfirmationStep === 1) {
       setResetConfirmationStep(2);
     } else {
+      console.log("🔄 Reset dell'app in corso...");
       resetApp();
       setShowResetConfirm(false);
       setResetConfirmationStep(1);
     }
   };
 
-  // NUOVO: Componente per lo status delle operazioni di backup
+  // Componente per lo status delle operazioni di backup
   const BackupOperationStatus = () => {
     if (!backupOperationStatus) return null;
 
@@ -281,8 +255,7 @@ const SettingsPage = () => {
       success: { icon: CheckCircle, color: theme.secondary, text: "Backup creato con successo!" },
       error: { icon: XCircle, color: theme.danger, text: "Errore nell'operazione" },
       verifying: { icon: RefreshCw, color: theme.primary, text: "Verifica in corso...", spin: true },
-      verified: { icon: CheckCircle, color: theme.secondary, text: "Dati verificati correttamente" },
-      restored: { icon: CheckCircle, color: theme.warning, text: "Dati ripristinati da backup" }
+      verified: { icon: CheckCircle, color: theme.secondary, text: "Dati verificati correttamente" }
     };
 
     const config = statusConfig[backupOperationStatus];
@@ -466,7 +439,7 @@ const SettingsPage = () => {
         </p>
       </motion.div>
 
-      {/* NUOVO: Sezione Backup e Sicurezza Dati */}
+      {/* Sezione Backup e Sicurezza Dati - SOLO SE PWA */}
       {isPWA() && (
         <motion.div
           variants={containerVariants}
@@ -716,7 +689,7 @@ const SettingsPage = () => {
                   justifyContent: 'center',
                 }}
               >
-                <Palette size={20} style={{ color: theme.primary }} />
+                <Palette size={20) style={{ color: theme.primary }} />
               </motion.div>
               <div>
                 <p style={{ fontWeight: '500', color: theme.text }}>Tema</p>
@@ -760,7 +733,7 @@ const SettingsPage = () => {
         </div>
       </motion.div>
 
-      {/* Selettore Tema (resto del codice uguale...) */}
+      {/* Selettore Tema */}
       <AnimatePresence>
         {showThemeSelector && (
           <motion.div
@@ -1310,7 +1283,7 @@ const SettingsPage = () => {
                   Versione App
                 </p>
                 <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                  1.1.0 {isPWA() ? '(PWA)' : '(Web)'}
+                  2.0.0 {isPWA() ? '(PWA)' : '(Web)'} - LocalStorage
                 </p>
               </div>
             </div>
@@ -1374,6 +1347,7 @@ const SettingsPage = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => {
+                    console.log("🔄 Logout...");
                     localStorage.clear();
                     window.location.reload();
                   }}
@@ -1596,11 +1570,11 @@ const SettingsPage = () => {
           transition={{ duration: 3, repeat: Infinity }}
           style={{ fontSize: '12px', color: theme.textSecondary }}
         >
-          Sviluppato con ❤️ per aiutarti a gestire le tue finanze
+          Budget App PWA - Versione 2.0 ✅
         </motion.p>
         {isPWA() && (
           <p style={{ fontSize: '10px', color: theme.textSecondary, marginTop: '4px' }}>
-            PWA • Backup automatico attivo
+            PWA • Dati salvati localmente • Backup disponibile
           </p>
         )}
       </motion.div>
