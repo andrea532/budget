@@ -179,11 +179,17 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
-  // Helper per garantire che i valori siano numeri
-  const ensureNumber = (value, defaultValue = 0) => {
-    const num = Number(value);
-    return isNaN(num) ? defaultValue : num;
-  };
+  // SOSTITUISCI questa funzione:
+const ensureNumber = (value, defaultValue = 0) => {
+  // CORREZIONE: Gestisce correttamente il caso quando value è 0
+  if (value === 0) return 0; // 0 è un valore valido
+  if (value === null || value === undefined || value === '') return defaultValue;
+  
+  const num = Number(value);
+  if (isNaN(num)) return defaultValue;
+  
+  return num;
+};
 
   // Helper per garantire che le spese abbiano importi numerici
   const ensureNumberInExpenses = (expenses) => {
