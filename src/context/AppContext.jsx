@@ -17,12 +17,15 @@ import {
   getSavingsHistory,
   addSavingsEntry as dbAddSavingsEntry,
   clearDatabase,
+  createManualBackup,
+  getBackupInfo,
+  verifyDataIntegrity,
   isPWA
 } from '../services/db';
 
 export const AppContext = createContext(null);
 
-// Definizione dei temi
+// Temi disponibili
 const THEMES = {
   'blue': {
     primary: '#4C6FFF',
@@ -67,6 +70,28 @@ export const AppProvider = ({ children }) => {
   const [transactions, setTransactions] = useState([]);
   const [savingsHistory, setSavingsHistory] = useState([]);
   const [totalSavings, setTotalSavings] = useState(0);
+  const [futureExpenses, setFutureExpenses] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [achievements, setAchievements] = useState([]);
+  const [userSettings, setUserSettings] = useState({
+    notifications: true,
+    darkMode: false,
+    currency: 'EUR',
+    language: 'it',
+    themeId: 'blue',
+    setupCompleted: false,
+    autoBackupEnabled: true
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
+  
+  // Stati backup
+  const [backupStatus, setBackupStatus] = useState({
+    lastBackup: null,
+    autoBackupEnabled: true
+  });
+
+  // Categorie
   const [categories] = useState([
     // Categorie Spese (1-20)
     { id: 1, name: 'Cibo e Bevande', color: '#FF5252', icon: '🍕' },
@@ -102,23 +127,67 @@ export const AppProvider = ({ children }) => {
     { id: 29, name: 'Rimborso', color: '#42A5F5', icon: '♻️' },
     { id: 30, name: 'Altro Entrata', color: '#78909C', icon: '➕' }
   ]);
-  const [futureExpenses, setFutureExpenses] = useState([]);
-  const [streak, setStreak] = useState(0);
-  const [achievements, setAchievements] = useState([]);
-  const [userSettings, setUserSettings] = useState({
-    notifications: true,
-    darkMode: false,
-    currency: 'EUR',
-    language: 'it',
-    themeId: 'blue',
-    setupCompleted: false
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Stato del tema
-  const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
 
-  // Aggiorna i colori del tema
+  // Helper per garantire numeri
+  const ensureNumber = (value, defaultValue = 0) => {
+    if (value === 0) return 0;
+    if (!value || isNaN(Number(value))) return defaultValue;
+    return Number(value);
+  };
+
+  // SALVATAGGIO IMMEDIATO E SEMPLICE
+  const saveAllSettings = async () => {
+    if (isLoading) return;
+    
+    try {
+      const settings = {
+        id: 1,
+        userSettings,
+        monthlyIncome: ensureNumber(monthlyIncome, 0),
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage: ensureNumber(savingsPercentage, 10),
+        streak: ensureNumber(streak, 0),
+        achievements,
+        backupStatus
+      };
+
+      await saveSettings(settings);
+      console.log("✅ Impostazioni salvate immediatamente");
+      
+      // Backup automatico se attivo
+      if (backupStatus.autoBackupEnabled && isPWA()) {
+        await createAutoBackup();
+      }
+      
+    } catch (error) {
+      console.error('❌ Errore salvataggio:', error);
+    }
+  };
+
+  // Salvataggio immediato
+  const saveAllSettingsImmediate = saveAllSettings;
+
+  // Backup automatico
+  const createAutoBackup = async () => {
+    try {
+      await createManualBackup();
+      setBackupStatus(prev => ({
+        ...prev,
+        lastBackup: new Date().toISOString()
+      }));
+      console.log("✅ Backup automatico creato");
+    } catch (error) {
+      console.error("❌ Errore backup automatico:", error);
+    }
+  };
+
+  // Verifica integrità dati
+  const verifyDataIntegrityFull = async () => {
+    return await verifyDataIntegrity();
+  };
+
+  // Aggiorna tema
   const updateThemeColors = (themeId) => {
     if (THEMES[themeId]) {
       setActiveTheme(THEMES[themeId]);
@@ -138,60 +207,25 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
-  // Helper per garantire numeri
-  const ensureNumber = (value, defaultValue = 0) => {
-    if (value === 0) return 0;
-    if (!value || isNaN(Number(value))) return defaultValue;
-    return Number(value);
-  };
-
-  // Salvataggio semplificato delle impostazioni
-  const saveAllSettings = async () => {
-    if (isLoading) return;
-    
-    try {
-      const settings = {
-        id: 1,
-        userSettings,
-        monthlyIncome: ensureNumber(monthlyIncome, 0),
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage: ensureNumber(savingsPercentage, 10),
-        streak: ensureNumber(streak, 0),
-        achievements
-      };
-
-      await saveSettings(settings);
-      console.log("Impostazioni salvate");
-    } catch (error) {
-      console.error('Errore salvataggio:', error);
-    }
-  };
-
-  // Salvataggio immediato
-  const saveAllSettingsImmediate = async () => {
-    await saveAllSettings();
-  };
-
   // Completamento setup
   const completeSetup = () => {
     setUserSettings(prev => ({
       ...prev,
       setupCompleted: true
     }));
-    // Salva immediatamente dopo il setup
+    // Salva immediatamente
     setTimeout(saveAllSettings, 100);
   };
 
-  // Caricamento dati semplificato
+  // CARICAMENTO DATI
   const loadData = async () => {
     try {
       setIsLoading(true);
+      console.log("🔄 Caricamento dati...");
       
-      // Inizializza il database
       await initDB();
       
-      // Carica le impostazioni
+      // Carica impostazioni
       const settingsData = await getSettings();
       if (settingsData && settingsData.length > 0) {
         const settings = settingsData[0];
@@ -203,9 +237,9 @@ export const AppProvider = ({ children }) => {
         setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
         setStreak(ensureNumber(settings.streak, 0));
         setAchievements(settings.achievements || []);
+        setBackupStatus(settings.backupStatus || backupStatus);
         
-        // Imposta il tema
-        if (settings.userSettings && settings.userSettings.themeId) {
+        if (settings.userSettings?.themeId) {
           updateThemeColors(settings.userSettings.themeId);
         }
       }
@@ -253,34 +287,35 @@ export const AppProvider = ({ children }) => {
         }
       }
       
+      console.log("✅ Dati caricati");
       setIsLoading(false);
     } catch (error) {
-      console.error('Errore caricamento dati:', error);
+      console.error('❌ Errore caricamento:', error);
       setIsLoading(false);
     }
   };
 
-  // Carica i dati all'avvio
+  // Carica all'avvio
   useEffect(() => {
     loadData();
   }, []);
 
-  // Salva automaticamente quando cambiano le impostazioni
+  // Salva quando cambiano le impostazioni (IMMEDIATO)
   useEffect(() => {
     if (!isLoading) {
-      const timer = setTimeout(saveAllSettings, 1000);
-      return () => clearTimeout(timer);
+      saveAllSettings();
     }
-  }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, streak, achievements, isLoading]);
+  }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, 
+      streak, achievements, backupStatus, isLoading]);
 
-  // Aggiorna tema quando cambia
+  // Aggiorna tema
   useEffect(() => {
     if (!isLoading && userSettings.themeId) {
       updateThemeColors(userSettings.themeId);
     }
   }, [userSettings.themeId, isLoading]);
 
-  // FUNZIONI DI CALCOLO DEL BUDGET
+  // CALCOLI BUDGET
   const getDaysUntilPayday = () => {
     if (!nextPaydayDate) return 30;
     
@@ -344,7 +379,7 @@ export const AppProvider = ({ children }) => {
     return dailyBudget - todayExpenses + todayIncome;
   };
 
-  // FUNZIONI PER LE TRANSAZIONI
+  // TRANSAZIONI (con salvataggio immediato)
   const addTransaction = async (transaction) => {
     const newTransaction = {
       ...transaction,
@@ -356,10 +391,9 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddTransaction(newTransaction);
       setTransactions(prev => [newTransaction, ...prev]);
-      // Salva le impostazioni dopo aver aggiunto una transazione
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiunta transazione:', error);
+      console.error('❌ Errore aggiunta transazione:', error);
     }
   };
 
@@ -378,10 +412,9 @@ export const AppProvider = ({ children }) => {
       setTransactions(prev => 
         prev.map(t => t.id === id ? updated : t)
       );
-      // Salva le impostazioni dopo l'aggiornamento
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiornamento transazione:', error);
+      console.error('❌ Errore aggiornamento transazione:', error);
     }
   };
 
@@ -389,14 +422,13 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteTransaction(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
-      // Salva le impostazioni dopo l'eliminazione
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore eliminazione transazione:', error);
+      console.error('❌ Errore eliminazione transazione:', error);
     }
   };
 
-  // FUNZIONI PER SPESE FISSE
+  // SPESE FISSE (con salvataggio immediato)
   const addFixedExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -407,10 +439,9 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddFixedExpense(newExpense);
       setFixedExpenses(prev => [...prev, newExpense]);
-      // Salva le impostazioni dopo aver aggiunto una spesa fissa
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiunta spesa fissa:', error);
+      console.error('❌ Errore aggiunta spesa fissa:', error);
     }
   };
 
@@ -418,14 +449,13 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteFixedExpense(id);
       setFixedExpenses(prev => prev.filter(e => e.id !== id));
-      // Salva le impostazioni dopo l'eliminazione
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore eliminazione spesa fissa:', error);
+      console.error('❌ Errore eliminazione spesa fissa:', error);
     }
   };
 
-  // FUNZIONI PER SPESE FUTURE
+  // SPESE FUTURE (con salvataggio immediato)
   const addFutureExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -436,10 +466,9 @@ export const AppProvider = ({ children }) => {
     try {
       await dbAddFutureExpense(newExpense);
       setFutureExpenses(prev => [...prev, newExpense]);
-      // Salva le impostazioni dopo aver aggiunto una spesa futura
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiunta spesa futura:', error);
+      console.error('❌ Errore aggiunta spesa futura:', error);
     }
   };
 
@@ -458,10 +487,9 @@ export const AppProvider = ({ children }) => {
       setFutureExpenses(prev => 
         prev.map(e => e.id === id ? updated : e)
       );
-      // Salva le impostazioni dopo l'aggiornamento
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiornamento spesa futura:', error);
+      console.error('❌ Errore aggiornamento spesa futura:', error);
     }
   };
 
@@ -469,14 +497,13 @@ export const AppProvider = ({ children }) => {
     try {
       await dbDeleteFutureExpense(id);
       setFutureExpenses(prev => prev.filter(e => e.id !== id));
-      // Salva le impostazioni dopo l'eliminazione
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore eliminazione spesa futura:', error);
+      console.error('❌ Errore eliminazione spesa futura:', error);
     }
   };
 
-  // FUNZIONI PER RISPARMI
+  // RISPARMI (con salvataggio immediato)
   const addToSavings = async (amount, date = new Date().toISOString()) => {
     const parsedAmount = ensureNumber(amount, 0);
     const newTotal = ensureNumber(totalSavings, 0) + parsedAmount;
@@ -492,10 +519,9 @@ export const AppProvider = ({ children }) => {
       await dbAddSavingsEntry(newEntry);
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
-      // Salva le impostazioni dopo aver aggiunto ai risparmi
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore aggiunta risparmio:', error);
+      console.error('❌ Errore aggiunta risparmio:', error);
     }
   };
 
@@ -514,14 +540,13 @@ export const AppProvider = ({ children }) => {
       await dbAddSavingsEntry(newEntry);
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
-      // Salva le impostazioni dopo il prelievo
-      setTimeout(saveAllSettings, 100);
+      await saveAllSettings(); // Salva subito
     } catch (error) {
-      console.error('Errore prelievo risparmio:', error);
+      console.error('❌ Errore prelievo risparmio:', error);
     }
   };
 
-  // STATISTICHE SEMPLICI
+  // STATISTICHE
   const getMonthlyStats = () => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -556,7 +581,7 @@ export const AppProvider = ({ children }) => {
     return { thisWeek: thisWeekExpenses };
   };
 
-  // RESET APP
+  // RESET
   const resetApp = async () => {
     try {
       setIsLoading(true);
@@ -580,11 +605,17 @@ export const AppProvider = ({ children }) => {
         ...userSettings,
         setupCompleted: false
       });
+      setBackupStatus({
+        lastBackup: null,
+        autoBackupEnabled: true
+      });
       
       setIsLoading(false);
-      window.location.reload();
+      console.log("✅ App resettata");
+      
+      setTimeout(() => window.location.reload(), 500);
     } catch (error) {
-      console.error('Errore reset app:', error);
+      console.error('❌ Errore reset:', error);
       setIsLoading(false);
     }
   };
@@ -613,6 +644,9 @@ export const AppProvider = ({ children }) => {
       completeSetup,
       saveAllSettings,
       saveAllSettingsImmediate,
+      backupStatus, setBackupStatus,
+      createAutoBackup,
+      verifyDataIntegrity: verifyDataIntegrityFull,
 
       // Funzioni principali
       addTransaction, 
