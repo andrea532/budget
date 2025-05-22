@@ -149,7 +149,7 @@ export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [saveTimeout, setSaveTimeout] = useState(null);
   
-  // NUOVO: Stati per il backup e recovery
+  // Stati per il backup e recovery
   const [backupStatus, setBackupStatus] = useState({
     lastBackup: null,
     autoBackupEnabled: true,
@@ -179,29 +179,27 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
-  // CORREZIONE: Funzione ensureNumber che gestisce correttamente lo 0
+  // CORREZIONE PRINCIPALE: Funzione ensureNumber migliorata che gestisce correttamente lo 0
   const ensureNumber = (value, defaultValue = 0) => {
-    console.log("ensureNumber chiamato con:", value, "default:", defaultValue);
-    
-    // Se è esattamente 0, ritorna 0
+    // Se il valore è esattamente 0, ritorna 0
     if (value === 0) {
-      console.log("Valore è 0, ritorno 0");
       return 0;
     }
     
     // Se è null, undefined o stringa vuota, usa il default
     if (value === null || value === undefined || value === '') {
-      console.log("Valore null/undefined/empty, ritorno default:", defaultValue);
       return defaultValue;
     }
     
+    // Converti in numero
     const num = Number(value);
+    
+    // Se la conversione ha dato NaN, usa il default
     if (isNaN(num)) {
-      console.log("Valore NaN, ritorno default:", defaultValue);
       return defaultValue;
     }
     
-    console.log("Ritorno valore convertito:", num);
+    // Altrimenti ritorna il numero convertito
     return num;
   };
 
@@ -215,7 +213,7 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
-  // NUOVO: Sistema di backup automatico migliorato
+  // Sistema di backup automatico migliorato
   const createAutoBackup = async () => {
     if (!backupStatus.autoBackupEnabled || backupStatus.backupInProgress) {
       return false;
@@ -247,7 +245,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // NUOVO: Funzione per gestire i messaggi del service worker
+  // Funzione per gestire i messaggi del service worker
   const handleServiceWorkerMessage = (event) => {
     console.log("Messaggio ricevuto dal Service Worker:", event.data);
     
@@ -290,7 +288,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // NUOVO: Verifica l'integrità dei dati
+  // Verifica l'integrità dei dati
   const verifyDataIntegrity = async () => {
     try {
       console.log("Verifica integrità dati...");
@@ -331,7 +329,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // NUOVO: Registrazione listener per Service Worker
+  // Registrazione listener per Service Worker
   useEffect(() => {
     if ('serviceWorker' in navigator && isPWA()) {
       navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
@@ -362,79 +360,139 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  // CORREZIONE: Funzione per salvare immediatamente (senza debounce)
+  // CORREZIONE PRINCIPALE: Funzione per salvare immediatamente con gestione PWA migliorata
   const saveAllSettingsImmediate = async () => {
-    if (isLoading) return;
+    if (isLoading) {
+      console.log("App ancora in caricamento, skip salvataggio");
+      return;
+    }
     
     try {
       console.log("=== SALVATAGGIO IMMEDIATO INIZIATO ===");
-      console.log("savingsPercentage prima del salvataggio:", savingsPercentage);
-      console.log("Tipo di savingsPercentage:", typeof savingsPercentage);
+      console.log("Dati da salvare:", {
+        savingsPercentage: savingsPercentage,
+        monthlyIncome: monthlyIncome,
+        userSettings: userSettings,
+        typeof_savingsPercentage: typeof savingsPercentage
+      });
       
       const settingsToSave = {
         id: 1,
         userSettings,
-        monthlyIncome: Number(monthlyIncome) || 0,
+        monthlyIncome: ensureNumber(monthlyIncome, 0),
         lastPaydayDate: lastPaydayDate || '',
         nextPaydayDate: nextPaydayDate || '',
-        savingsPercentage: Number(savingsPercentage), // Forza la conversione ma mantiene 0
-        streak: Number(streak) || 0,
+        savingsPercentage: ensureNumber(savingsPercentage, 10), // Assicura che sia numerico
+        streak: ensureNumber(streak, 0),
         achievements: achievements || []
       };
       
-      console.log("Dati da salvare:", settingsToSave);
-      console.log("savingsPercentage nel settings:", settingsToSave.savingsPercentage);
+      console.log("Settings processati per il salvataggio:", settingsToSave);
       
-      await saveSettings(settingsToSave);
-      console.log("=== SALVATAGGIO COMPLETATO CON SUCCESSO ===");
-      
-      // Verifica immediata di cosa è stato salvato
-      setTimeout(async () => {
+      // CORREZIONE: Backup immediato in localStorage per PWA prima del salvataggio nel DB
+      if (isPWA()) {
         try {
-          const verificaSettings = await getSettings();
-          if (verificaSettings && verificaSettings[0]) {
-            console.log("VERIFICA - savingsPercentage salvato:", verificaSettings[0].savingsPercentage);
-          }
-        } catch (e) {
-          console.error("Errore nella verifica post-salvataggio:", e);
+          localStorage.setItem('budget-app-settings-emergency', JSON.stringify(settingsToSave));
+          localStorage.setItem('budget-app-settings-emergency-timestamp', new Date().toISOString());
+          console.log("Backup di emergenza creato in localStorage");
+        } catch (localStorageError) {
+          console.warn("Errore nel backup di emergenza:", localStorageError);
         }
-      }, 500);
-      
-      // Se siamo in PWA, crea anche un backup
-      if (isPWA() && backupStatus.autoBackupEnabled) {
-        setTimeout(createAutoBackup, 1000);
       }
+      
+      // Salva nel database
+      await saveSettings(settingsToSave);
+      console.log("Salvataggio nel database completato");
+      
+      // CORREZIONE: Verifica immediata del salvataggio per PWA
+      if (isPWA()) {
+        setTimeout(async () => {
+          try {
+            const verificaSettings = await getSettings();
+            if (verificaSettings && verificaSettings[0]) {
+              console.log("VERIFICA - savingsPercentage salvato:", verificaSettings[0].savingsPercentage);
+              console.log("VERIFICA - Tutti i settings salvati:", verificaSettings[0]);
+              
+              // Se la verifica non corrisponde, prova un altro salvataggio
+              if (verificaSettings[0].savingsPercentage !== settingsToSave.savingsPercentage) {
+                console.warn("Mismatch rilevato, nuovo tentativo di salvataggio...");
+                await saveSettings(settingsToSave);
+              }
+            }
+          } catch (e) {
+            console.error("Errore nella verifica post-salvataggio:", e);
+          }
+        }, 500);
+      }
+      
+      // Se siamo in PWA, crea anche un backup automatico
+      if (isPWA() && backupStatus.autoBackupEnabled) {
+        setTimeout(() => {
+          createAutoBackup().catch(err => console.warn("Backup automatico fallito:", err));
+        }, 1000);
+      }
+      
+      console.log("=== SALVATAGGIO COMPLETATO CON SUCCESSO ===");
       
     } catch (error) {
       console.error('Errore nel salvataggio immediato:', error);
       
-      // Retry migliorato per PWA
+      // CORREZIONE: Strategia di recovery migliorata per PWA
       if (isPWA()) {
-        console.log("Tentativo di recupero errore su PWA");
+        console.log("Avvio strategia di recovery per PWA...");
         
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        for (let attempt = 1; attempt <= 5; attempt++) {
           try {
+            console.log(`Tentativo di recovery ${attempt}/5`);
+            
+            // Attendi prima di riprovare
             await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+            
+            // Reinizializza il database
             await initDB();
             
+            // Riprova il salvataggio
             const settingsRetry = {
               id: 1,
               userSettings,
-              monthlyIncome: Number(monthlyIncome) || 0,
+              monthlyIncome: ensureNumber(monthlyIncome, 0),
               lastPaydayDate: lastPaydayDate || '',
               nextPaydayDate: nextPaydayDate || '',
-              savingsPercentage: Number(savingsPercentage),
-              streak: Number(streak) || 0,
+              savingsPercentage: ensureNumber(savingsPercentage, 10),
+              streak: ensureNumber(streak, 0),
               achievements: achievements || []
             };
             
             await saveSettings(settingsRetry);
-            console.log(`Recupero salvataggio PWA riuscito al tentativo ${attempt}`);
-            return;
+            console.log(`Recovery PWA riuscito al tentativo ${attempt}`);
+            return; // Uscita dalla funzione se il salvataggio è riuscito
+            
           } catch (retryError) {
             console.error(`Tentativo ${attempt} fallito:`, retryError);
-            if (attempt === 3) {
-              console.error("Tutti i tentativi di recupero sono falliti");
+            if (attempt === 5) {
+              console.error("Tutti i tentativi di recovery sono falliti");
+              
+              // Ultimo tentativo: salva solo in localStorage
+              try {
+                const emergencyBackup = {
+                  settings: {
+                    id: 1,
+                    userSettings,
+                    monthlyIncome: ensureNumber(monthlyIncome, 0),
+                    lastPaydayDate: lastPaydayDate || '',
+                    nextPaydayDate: nextPaydayDate || '',
+                    savingsPercentage: ensureNumber(savingsPercentage, 10),
+                    streak: ensureNumber(streak, 0),
+                    achievements: achievements || []
+                  },
+                  timestamp: new Date().toISOString(),
+                  emergency: true
+                };
+                localStorage.setItem('budget-app-emergency-save', JSON.stringify(emergencyBackup));
+                console.log("Salvataggio di emergenza in localStorage completato");
+              } catch (emergencyError) {
+                console.error("Anche il salvataggio di emergenza è fallito:", emergencyError);
+              }
             }
           }
         }
@@ -459,7 +517,7 @@ export const AppProvider = ({ children }) => {
         monthlyIncome: ensureNumber(monthlyIncome, 0),
         lastPaydayDate,
         nextPaydayDate,
-        savingsPercentage: ensureNumber(savingsPercentage, 10), // CORREZIONE: default a 10, ma accetta 0
+        savingsPercentage: ensureNumber(savingsPercentage, 10),
         streak: ensureNumber(streak, 0),
         achievements
       };
@@ -468,14 +526,16 @@ export const AppProvider = ({ children }) => {
       console.log("Impostazioni salvate con successo");
       
       if (isPWA() && backupStatus.autoBackupEnabled) {
-        setTimeout(createAutoBackup, 1000);
+        setTimeout(() => {
+          createAutoBackup().catch(err => console.warn("Backup automatico fallito:", err));
+        }, 1000);
       }
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
     }
   };
 
-  // Funzione completeSetup MIGLIORATA
+  // Funzione completeSetup migliorata
   const completeSetup = () => {
     console.log("Completamento setup iniziale...");
     
@@ -492,12 +552,14 @@ export const AppProvider = ({ children }) => {
       
       // Crea backup dopo il setup
       if (isPWA()) {
-        setTimeout(createAutoBackup, 2000);
+        setTimeout(() => {
+          createAutoBackup().catch(err => console.warn("Backup post-setup fallito:", err));
+        }, 2000);
       }
     }, 500);
   };
 
-  // CORREZIONE: Funzione migliorata per il caricamento con gestione corretta dello 0
+  // CORREZIONE: Funzione migliorata per il caricamento con gestione recovery
   const loadDataWithFallback = async () => {
     try {
       setIsLoading(true);
@@ -511,11 +573,34 @@ export const AppProvider = ({ children }) => {
         await new Promise(resolve => setTimeout(resolve, 800));
       }
       
-      // Carica le impostazioni dal database
-      let settingsData = await getSettings();
-      console.log("Impostazioni caricate dal database:", settingsData);
+      // CORREZIONE: Prova prima il recovery da localStorage se PWA
+      let settingsData = null;
+      if (isPWA()) {
+        try {
+          // Controlla se c'è un salvataggio di emergenza
+          const emergencySave = localStorage.getItem('budget-app-emergency-save');
+          const emergencySettings = localStorage.getItem('budget-app-settings-emergency');
+          
+          if (emergencySave) {
+            const emergency = JSON.parse(emergencySave);
+            console.log("Trovato salvataggio di emergenza:", emergency);
+            settingsData = [emergency.settings];
+          } else if (emergencySettings) {
+            console.log("Trovato backup di emergenza da localStorage");
+            settingsData = [JSON.parse(emergencySettings)];
+          }
+        } catch (e) {
+          console.warn("Errore nel controllo emergency save:", e);
+        }
+      }
       
-      // CORREZIONE: Gestione corretta del caricamento che preserva lo 0
+      // Se non abbiamo trovato dati di emergency, carica dal database
+      if (!settingsData) {
+        settingsData = await getSettings();
+        console.log("Impostazioni caricate dal database:", settingsData);
+      }
+      
+      // Processa le impostazioni caricate
       if (settingsData && settingsData.length > 0) {
         const settings = settingsData[0];
         
@@ -526,9 +611,11 @@ export const AppProvider = ({ children }) => {
         
         // CORREZIONE CRITICA: Gestisce correttamente lo 0 per savingsPercentage
         const savedSavingsPercentage = settings.savingsPercentage;
+        console.log("Valore savingsPercentage dal database:", savedSavingsPercentage, "tipo:", typeof savedSavingsPercentage);
+        
         if (typeof savedSavingsPercentage === 'number') {
           setSavingsPercentage(savedSavingsPercentage); // Accetta anche 0
-          console.log('SavingsPercentage caricato:', savedSavingsPercentage);
+          console.log('SavingsPercentage caricato correttamente:', savedSavingsPercentage);
         } else {
           setSavingsPercentage(10); // Default solo se non è un numero
           console.log('SavingsPercentage impostato al default: 10');
@@ -548,6 +635,17 @@ export const AppProvider = ({ children }) => {
           const themeId = settings.userSettings.themeId;
           if (THEMES[themeId]) {
             setActiveTheme(THEMES[themeId]);
+          }
+        }
+        
+        // Se abbiamo usato un emergency save, ripulisci il localStorage
+        if (isPWA()) {
+          try {
+            localStorage.removeItem('budget-app-emergency-save');
+            localStorage.removeItem('budget-app-settings-emergency');
+            console.log("Emergency saves ripuliti");
+          } catch (e) {
+            console.warn("Errore nella pulizia emergency saves:", e);
           }
         }
       }
@@ -610,7 +708,9 @@ export const AppProvider = ({ children }) => {
       console.log("=== CARICAMENTO DATI COMPLETATO ===");
       
       // Verifica integrità dopo il caricamento
-      setTimeout(verifyDataIntegrity, 2000);
+      setTimeout(() => {
+        verifyDataIntegrity().catch(err => console.warn("Verifica integrità fallita:", err));
+      }, 2000);
       
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error);
@@ -629,9 +729,15 @@ export const AppProvider = ({ children }) => {
       window.registerGlobalSaveFunction(saveAllSettingsImmediate);
       console.log("Funzione di salvataggio immediato registrata per PWA");
     }
+    
+    // NUOVO: Registra anche la funzione di backup
+    if (typeof window !== 'undefined' && window.registerGlobalBackupFunction) {
+      window.registerGlobalBackupFunction(createAutoBackup);
+      console.log("Funzione di backup registrata per PWA");
+    }
   }, []);
   
-  // Salva le impostazioni quando cambiano con debounce ottimizzato
+  // CORREZIONE: Effect per il salvataggio con debounce migliorato
   useEffect(() => {
     if (isLoading) return;
     
@@ -643,15 +749,23 @@ export const AppProvider = ({ children }) => {
       userSettings
     });
     
-    // Debounce: aspetta 1 secondo prima di salvare per evitare salvataggi multipli
+    // Per PWA, usa salvataggio più aggressivo
+    const saveDelay = isPWA() ? 500 : 1000;
+    
+    // Debounce: aspetta prima di salvare per evitare salvataggi multipli
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
     
     const newTimeout = setTimeout(() => {
       console.log("Esecuzione salvataggio dopo debounce...");
-      saveAllSettings();
-    }, 1000);
+      if (isPWA()) {
+        // Per PWA usa salvataggio immediato
+        saveAllSettingsImmediate();
+      } else {
+        saveAllSettings();
+      }
+    }, saveDelay);
     
     setSaveTimeout(newTimeout);
     
@@ -670,7 +784,7 @@ export const AppProvider = ({ children }) => {
     }
   }, [userSettings.themeId, isLoading]);
 
-  // Sistema automatico per aggiungere risparmi mensili - CORRETTO
+  // Sistema automatico per aggiungere risparmi mensili
   useEffect(() => {
     if (isLoading) return;
     
@@ -682,7 +796,6 @@ export const AppProvider = ({ children }) => {
       payday.setHours(0, 0, 0, 0);
       
       if (today.getTime() === payday.getTime()) {
-        // CORREZIONE: Gestisce correttamente la percentuale 0
         const currentSavingsPercentage = ensureNumber(savingsPercentage, 0);
         if (currentSavingsPercentage > 0) {
           const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * currentSavingsPercentage) / 100;
@@ -1180,7 +1293,7 @@ export const AppProvider = ({ children }) => {
       setStreak(0);
       setAchievements([]);
       
-      // Resetta le impostazioni utente ma mantiene il tema e la lingua
+      // Resetta le impostazioni utente ma mantieni il tema e la lingua
       setUserSettings({
         ...userSettings,
         setupCompleted: false
@@ -1242,9 +1355,9 @@ export const AppProvider = ({ children }) => {
       activeTheme,
       completeSetup,
       saveAllSettings,
-      saveAllSettingsImmediate, // NUOVO: Salvataggio immediato
+      saveAllSettingsImmediate,
       
-      // NUOVO: Stati e funzioni per backup
+      // Stati e funzioni per backup
       backupStatus, 
       setBackupStatus,
       createAutoBackup,
