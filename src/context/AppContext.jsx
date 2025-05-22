@@ -144,6 +144,7 @@ export const AppProvider = ({ children }) => {
     setupCompleted: false // Aggiunta questa proprietà per tenere traccia se la configurazione iniziale è stata completata
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [saveTimeout, setSaveTimeout] = useState(null);
   
   // Stato dei colori del tema (con valori predefiniti)
   const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
@@ -185,16 +186,32 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
-  // Funzione per salvare subito tutte le impostazioni
+  // Funzione ottimizzata per salvare subito tutte le impostazioni
   const saveAllSettings = async () => {
     try {
-      // Per mantenere la persistenza su PWA, aggiungiamo una voce in localStorage
+      console.log("Tentativo di salvataggio impostazioni:", {
+        monthlyIncome,
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage,
+        setupCompleted: userSettings.setupCompleted
+      });
+
+      // Per PWA, salva sempre prima in localStorage come backup IMMEDIATO
       if (isPWA()) {
-        localStorage.setItem('budget-app-saved', new Date().toISOString());
-        
-        // Salva anche valori critici in localStorage come backup
-        localStorage.setItem('budget-app-income', String(monthlyIncome));
-        localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
+        try {
+          localStorage.setItem('budget-app-backup', JSON.stringify({
+            monthlyIncome: Number(monthlyIncome),
+            lastPaydayDate,
+            nextPaydayDate,
+            savingsPercentage: Number(savingsPercentage),
+            userSettings,
+            timestamp: new Date().toISOString()
+          }));
+          console.log("Backup localStorage creato con successo");
+        } catch (e) {
+          console.error("Errore nel backup localStorage:", e);
+        }
       }
       
       const settings = {
@@ -210,15 +227,27 @@ export const AppProvider = ({ children }) => {
       };
       
       await saveSettings(settings);
-      console.log("Impostazioni salvate con successo:", settings);
+      console.log("Impostazioni salvate con successo nel database:", settings);
+
+      // Per mantenere la persistenza su PWA, aggiungiamo una voce in localStorage
+      if (isPWA()) {
+        localStorage.setItem('budget-app-saved', new Date().toISOString());
+        
+        // Salva anche valori critici in localStorage come backup
+        localStorage.setItem('budget-app-income', String(monthlyIncome));
+        localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
+      }
+      
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
       
-      // Retry su PWA in caso di errore
+      // Retry migliorato per PWA
       if (isPWA()) {
-        console.log("Tentativo di recupero errore su PWA");
-        setTimeout(async () => {
+        console.log("Tentativo di recupero errore su PWA con triple retry");
+        
+        for (let attempt = 1; attempt <= 3; attempt++) {
           try {
+            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
             // Rinitializziamo il database prima di riprovare
             await initDB();
             
@@ -234,11 +263,15 @@ export const AppProvider = ({ children }) => {
             };
             
             await saveSettings(settingsRetry);
-            console.log("Recupero salvataggio PWA riuscito");
+            console.log(`Recupero salvataggio PWA riuscito al tentativo ${attempt}`);
+            return; // Esci dal loop se il salvataggio è riuscito
           } catch (retryError) {
-            console.error("Anche il tentativo di recupero è fallito:", retryError);
+            console.error(`Tentativo ${attempt} fallito:`, retryError);
+            if (attempt === 3) {
+              console.error("Tutti i tentativi di recupero sono falliti");
+            }
           }
-        }, 2000);
+        }
       }
     }
   };
@@ -265,53 +298,67 @@ export const AppProvider = ({ children }) => {
     }, saveDelay);
   };
 
-  // Inizializzazione del database e caricamento dati
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
+  // Funzione migliorata per il caricamento con fallback su localStorage
+  const loadDataWithFallback = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Inizializza il database
+      await initDB();
+      
+      // Su PWA, piccolo ritardo aggiuntivo per assicurarsi che il DB sia pronto
+      if (isPWA()) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+      
+      // Carica le impostazioni salvate
+      let settingsData = await getSettings();
+      console.log("Impostazioni caricate dal database:", settingsData);
+      
+      // Se non ci sono dati nel database, prova il backup localStorage
+      if ((!settingsData || settingsData.length === 0) && isPWA()) {
+        console.log("Nessun dato nel database, controllo backup localStorage...");
         
-        // Inizializza il database
-        await initDB();
-        
-        // Su PWA, piccolo ritardo aggiuntivo per assicurarsi che il DB sia pronto
-        if (isPWA()) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        
-        // Carica le impostazioni salvate
-        const settingsData = await getSettings();
-        console.log("Impostazioni caricate:", settingsData);
-        
-        if (settingsData && settingsData.length > 0) {
-          const settings = settingsData[0];
-          
-          // Conversione esplicita di tutti i valori numerici per evitare problemi di tipo
-          setUserSettings(settings.userSettings || userSettings);
-          setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
-          setLastPaydayDate(settings.lastPaydayDate || '');
-          setNextPaydayDate(settings.nextPaydayDate || '');
-          setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
-          setStreak(ensureNumber(settings.streak, 0));
-          setAchievements(settings.achievements || []);
-          
-          console.log('Dati caricati e convertiti:', {
-            monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
-            savingsPercentage: ensureNumber(settings.savingsPercentage, 10)
-          });
-          
-          // Imposta i colori del tema in base al themeId
-          if (settings.userSettings && settings.userSettings.themeId) {
-            const themeId = settings.userSettings.themeId;
-            if (THEMES[themeId]) {
-              setActiveTheme(THEMES[themeId]);
-            }
+        try {
+          const backup = localStorage.getItem('budget-app-backup');
+          if (backup) {
+            const backupData = JSON.parse(backup);
+            console.log("Backup trovato in localStorage:", backupData);
+            
+            // Ripristina i dati dal backup
+            setUserSettings(backupData.userSettings || userSettings);
+            setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
+            setLastPaydayDate(backupData.lastPaydayDate || '');
+            setNextPaydayDate(backupData.nextPaydayDate || '');
+            setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
+            
+            // Salva nel database per il futuro
+            const settingsToSave = {
+              id: 1,
+              userSettings: backupData.userSettings || userSettings,
+              monthlyIncome: Number(backupData.monthlyIncome || 0),
+              lastPaydayDate: backupData.lastPaydayDate || '',
+              nextPaydayDate: backupData.nextPaydayDate || '',
+              savingsPercentage: Number(backupData.savingsPercentage || 10),
+              streak: 0,
+              achievements: []
+            };
+            
+            await saveSettings(settingsToSave);
+            console.log("Dati ripristinati dal backup e salvati nel database");
+            
+            settingsData = [settingsToSave]; // Aggiorna per il resto della funzione
           }
-        } else if (isPWA()) {
-          // In PWA potrebbe esserci un problema di accesso al DB
-          console.log("Dati non trovati in PWA, verifico localStorage...");
-          
-          // Verifica se abbiamo salvato dati in localStorage come backup
+        } catch (e) {
+          console.error("Errore nel ripristino dal backup localStorage:", e);
+        }
+      }
+      
+      // Fallback aggiuntivo per PWA con localStorage legacy
+      if ((!settingsData || settingsData.length === 0) && isPWA()) {
+        console.log("Controllo backup legacy localStorage...");
+        
+        try {
           const savedTimestamp = localStorage.getItem('budget-app-saved');
           if (savedTimestamp) {
             console.log(`Ultimo salvataggio rilevato: ${savedTimestamp}`);
@@ -320,152 +367,173 @@ export const AppProvider = ({ children }) => {
             const localIncome = localStorage.getItem('budget-app-income');
             const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
             
-            if (localIncome) {
+            if (localIncome || localSavingsPercentage) {
               setMonthlyIncome(ensureNumber(localIncome, 0));
-            }
-            
-            if (localSavingsPercentage) {
               setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
-            }
-            
-            console.log("Recupero dati da localStorage:", {
-              monthlyIncome: ensureNumber(localIncome, 0),
-              savingsPercentage: ensureNumber(localSavingsPercentage, 10)
-            });
-            
-            console.log("Tentativo di reinizializzazione DB");
-            
-            // Reinizializza e ritenta
-            await initDB();
-            const retrySettings = await getSettings();
-            
-            if (retrySettings && retrySettings.length > 0) {
-              console.log("Recupero dati riuscito al secondo tentativo");
-              const settings = retrySettings[0];
-              setUserSettings(settings.userSettings || userSettings);
-              setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
-              setLastPaydayDate(settings.lastPaydayDate || '');
-              setNextPaydayDate(settings.nextPaydayDate || '');
-              setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
-              setStreak(ensureNumber(settings.streak, 0));
-              setAchievements(settings.achievements || []);
               
-              if (settings.userSettings && settings.userSettings.themeId) {
-                const themeId = settings.userSettings.themeId;
-                if (THEMES[themeId]) {
-                  setActiveTheme(THEMES[themeId]);
-                }
+              console.log("Recupero dati da localStorage legacy:", {
+                monthlyIncome: ensureNumber(localIncome, 0),
+                savingsPercentage: ensureNumber(localSavingsPercentage, 10)
+              });
+              
+              // Tentativo di reinizializzazione DB
+              console.log("Tentativo di reinizializzazione DB");
+              await initDB();
+              const retrySettings = await getSettings();
+              
+              if (retrySettings && retrySettings.length > 0) {
+                console.log("Recupero dati riuscito al secondo tentativo");
+                settingsData = retrySettings;
               }
             }
           }
-        }
-        
-        // Carica le transazioni
-        const transactionsData = await getTransactions();
-        if (transactionsData) {
-          // Assicuriamo che tutti gli importi siano numeri
-          const processedTransactions = transactionsData.map(transaction => ({
-            ...transaction,
-            amount: ensureNumber(transaction.amount, 0)
-          }));
-          setTransactions(processedTransactions);
-        }
-        
-        // Carica le spese fisse
-        const fixedExpensesData = await getFixedExpenses();
-        if (fixedExpensesData) {
-          // Assicuriamo che tutti gli importi siano numeri
-          setFixedExpenses(ensureNumberInExpenses(fixedExpensesData));
-        }
-        
-        // Carica le spese future
-        const futureExpensesData = await getFutureExpenses();
-        if (futureExpensesData) {
-          // Assicuriamo che tutti gli importi siano numeri
-          setFutureExpenses(ensureNumberInExpenses(futureExpensesData));
-        }
-        
-        // Carica la cronologia risparmi
-        const savingsData = await getSavingsHistory();
-        if (savingsData) {
-          // Assicuriamo che tutti gli importi siano numeri
-          const processedSavings = savingsData.map(entry => ({
-            ...entry,
-            amount: ensureNumber(entry.amount, 0),
-            total: ensureNumber(entry.total, 0)
-          }));
-          setSavingsHistory(processedSavings);
-          
-          // Calcola il totale dei risparmi
-          if (processedSavings.length > 0) {
-            const lastSavingsEntry = processedSavings[processedSavings.length - 1];
-            setTotalSavings(ensureNumber(lastSavingsEntry.total, 0));
-          }
-        }
-        
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Errore nel caricamento dei dati:', error);
-        
-        // Su PWA, fallback su localStorage
-        if (isPWA()) {
-          console.log("Tentativo di fallback per PWA");
-          try {
-            // Recupero da localStorage
-            const localIncome = localStorage.getItem('budget-app-income');
-            const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
-            
-            if (localIncome) {
-              setMonthlyIncome(ensureNumber(localIncome, 0));
-            }
-            
-            if (localSavingsPercentage) {
-              setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
-            }
-            
-            // Forza la chiusura e reinizializzazione del DB
-            await clearDatabase();
-            await initDB();
-            
-            // Retry dopo 1 secondo
-            setTimeout(async () => {
-              try {
-                const retrySettings = await getSettings();
-                if (retrySettings && retrySettings.length > 0) {
-                  // Recupero dati...
-                  const settings = retrySettings[0];
-                  setUserSettings(settings.userSettings || userSettings);
-                  setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
-                  setLastPaydayDate(settings.lastPaydayDate || '');
-                  setNextPaydayDate(settings.nextPaydayDate || '');
-                  setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
-                  setStreak(ensureNumber(settings.streak, 0));
-                  setAchievements(settings.achievements || []);
-                }
-              } catch (e) {
-                console.error("Fallback fallito:", e);
-              } finally {
-                setIsLoading(false);
-              }
-            }, 1000);
-          } catch (e) {
-            console.error("Fallback fallito completamente:", e);
-            setIsLoading(false);
-          }
-        } else {
-          setIsLoading(false);
+        } catch (e) {
+          console.error("Errore nel recupero legacy:", e);
         }
       }
-    };
-    
-    loadData();
+      
+      // Processa i dati caricati
+      if (settingsData && settingsData.length > 0) {
+        const settings = settingsData[0];
+        
+        // Conversione esplicita di tutti i valori numerici per evitare problemi di tipo
+        setUserSettings(settings.userSettings || userSettings);
+        setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
+        setLastPaydayDate(settings.lastPaydayDate || '');
+        setNextPaydayDate(settings.nextPaydayDate || '');
+        setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
+        setStreak(ensureNumber(settings.streak, 0));
+        setAchievements(settings.achievements || []);
+        
+        console.log('Dati finali caricati e convertiti:', {
+          monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
+          savingsPercentage: ensureNumber(settings.savingsPercentage, 10),
+          setupCompleted: settings.userSettings?.setupCompleted
+        });
+        
+        // Imposta i colori del tema in base al themeId
+        if (settings.userSettings && settings.userSettings.themeId) {
+          const themeId = settings.userSettings.themeId;
+          if (THEMES[themeId]) {
+            setActiveTheme(THEMES[themeId]);
+          }
+        }
+      }
+      
+      // Carica tutti gli altri dati in parallelo per migliorare le performance
+      const [transactionsData, fixedExpensesData, futureExpensesData, savingsData] = await Promise.all([
+        getTransactions(),
+        getFixedExpenses(),
+        getFutureExpenses(),
+        getSavingsHistory()
+      ]);
+      
+      // Carica le transazioni
+      if (transactionsData) {
+        // Assicuriamo che tutti gli importi siano numeri
+        const processedTransactions = transactionsData.map(transaction => ({
+          ...transaction,
+          amount: ensureNumber(transaction.amount, 0)
+        }));
+        setTransactions(processedTransactions);
+      }
+      
+      // Carica le spese fisse
+      if (fixedExpensesData) {
+        // Assicuriamo che tutti gli importi siano numeri
+        setFixedExpenses(ensureNumberInExpenses(fixedExpensesData));
+      }
+      
+      // Carica le spese future
+      if (futureExpensesData) {
+        // Assicuriamo che tutti gli importi siano numeri
+        setFutureExpenses(ensureNumberInExpenses(futureExpensesData));
+      }
+      
+      // Carica la cronologia risparmi
+      if (savingsData) {
+        // Assicuriamo che tutti gli importi siano numeri
+        const processedSavings = savingsData.map(entry => ({
+          ...entry,
+          amount: ensureNumber(entry.amount, 0),
+          total: ensureNumber(entry.total, 0)
+        }));
+        setSavingsHistory(processedSavings);
+        
+        // Calcola il totale dei risparmi
+        if (processedSavings.length > 0) {
+          const lastSavingsEntry = processedSavings[processedSavings.length - 1];
+          setTotalSavings(ensureNumber(lastSavingsEntry.total, 0));
+        }
+      }
+      
+      setIsLoading(false);
+      console.log("Caricamento dati completato con successo");
+      
+    } catch (error) {
+      console.error('Errore nel caricamento dei dati:', error);
+      
+      // Fallback finale per PWA
+      if (isPWA()) {
+        console.log("Tentativo di fallback finale per PWA");
+        try {
+          // Recupero da localStorage
+          const localIncome = localStorage.getItem('budget-app-income');
+          const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
+          
+          if (localIncome) {
+            setMonthlyIncome(ensureNumber(localIncome, 0));
+          }
+          
+          if (localSavingsPercentage) {
+            setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
+          }
+          
+          // Forza la chiusura e reinizializzazione del DB
+          await clearDatabase();
+          await initDB();
+          
+          // Retry dopo 1 secondo
+          setTimeout(async () => {
+            try {
+              const retrySettings = await getSettings();
+              if (retrySettings && retrySettings.length > 0) {
+                // Recupero dati...
+                const settings = retrySettings[0];
+                setUserSettings(settings.userSettings || userSettings);
+                setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
+                setLastPaydayDate(settings.lastPaydayDate || '');
+                setNextPaydayDate(settings.nextPaydayDate || '');
+                setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
+                setStreak(ensureNumber(settings.streak, 0));
+                setAchievements(settings.achievements || []);
+              }
+            } catch (e) {
+              console.error("Fallback finale fallito:", e);
+            } finally {
+              setIsLoading(false);
+            }
+          }, 1000);
+        } catch (e) {
+          console.error("Fallback finale fallito completamente:", e);
+          setIsLoading(false);
+        }
+      } else {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  // Inizializzazione del database e caricamento dati
+  useEffect(() => {
+    loadDataWithFallback();
   }, []);
   
-  // Salva le impostazioni quando cambiano
+  // Salva le impostazioni quando cambiano con debounce ottimizzato
   useEffect(() => {
     if (isLoading) return;
     
-    console.log("Rilevate modifiche alle impostazioni, salvataggio in corso...", {
+    console.log("Rilevate modifiche alle impostazioni...", {
       monthlyIncome: ensureNumber(monthlyIncome), 
       lastPaydayDate, 
       nextPaydayDate, 
@@ -473,42 +541,24 @@ export const AppProvider = ({ children }) => {
       userSettings
     });
     
-    const saveUserData = async () => {
-      try {
-        const settings = {
-          id: 1, // ID fisso per le impostazioni
-          userSettings,
-          monthlyIncome: Number(monthlyIncome),
-          lastPaydayDate,
-          nextPaydayDate,
-          savingsPercentage: Number(savingsPercentage),
-          streak: Number(streak),
-          achievements
-        };
-        
-        await saveSettings(settings);
-        console.log("Impostazioni salvate con successo:", settings);
-        
-        // Per PWA, aggiorna anche localStorage come backup
-        if (isPWA()) {
-          localStorage.setItem('budget-app-saved', new Date().toISOString());
-          localStorage.setItem('budget-app-income', String(monthlyIncome));
-          localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
-        }
-      } catch (error) {
-        console.error('Errore nel salvataggio delle impostazioni:', error);
-        // Tentativo aggiuntivo su PWA dopo un ritardo
-        if (isPWA()) {
-          setTimeout(() => saveAllSettings(), 1000);
-        }
+    // Debounce: aspetta 1 secondo prima di salvare per evitare salvataggi multipli
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    
+    const newTimeout = setTimeout(() => {
+      console.log("Esecuzione salvataggio dopo debounce...");
+      saveAllSettings();
+    }, 1000); // Aspetta 1 secondo
+    
+    setSaveTimeout(newTimeout);
+    
+    // Cleanup
+    return () => {
+      if (newTimeout) {
+        clearTimeout(newTimeout);
       }
     };
-    
-    // Per PWA aggiungiamo un ritardo prima del salvataggio
-    const saveDelay = isPWA() ? 500 : 0;
-    setTimeout(() => {
-      saveUserData();
-    }, saveDelay);
   }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, streak, achievements, isLoading]);
 
   // Aggiorna i colori del tema quando cambia themeId
@@ -1147,6 +1197,7 @@ export const AppProvider = ({ children }) => {
         localStorage.removeItem('budget-app-saved');
         localStorage.removeItem('budget-app-income');
         localStorage.removeItem('budget-app-savings-percentage');
+        localStorage.removeItem('budget-app-backup');
       }
       
       setIsLoading(false);
