@@ -186,6 +186,67 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
+  // FUNZIONI PWA PER BACKUP LOCALSTORAGE
+  const saveToLocalStorageBackup = (data) => {
+    if (isPWA()) {
+      try {
+        // Salva TUTTI i dati critici in localStorage
+        localStorage.setItem('budget-app-full-backup', JSON.stringify({
+          userSettings: data.userSettings || userSettings,
+          monthlyIncome: Number(data.monthlyIncome || monthlyIncome),
+          lastPaydayDate: data.lastPaydayDate || lastPaydayDate,
+          nextPaydayDate: data.nextPaydayDate || nextPaydayDate,
+          savingsPercentage: Number(data.savingsPercentage || savingsPercentage),
+          streak: Number(data.streak || streak),
+          achievements: data.achievements || achievements,
+          timestamp: new Date().toISOString(),
+          setupCompleted: data.userSettings?.setupCompleted || userSettings.setupCompleted
+        }));
+        
+        // Backup separato solo per setupCompleted (extra sicurezza)
+        localStorage.setItem('budget-setup-completed', String(data.userSettings?.setupCompleted || userSettings.setupCompleted));
+        
+        console.log("Backup completo salvato in localStorage per PWA");
+      } catch (e) {
+        console.error("Errore nel backup localStorage:", e);
+      }
+    }
+  };
+
+  // Funzione migliorata per caricare da localStorage
+  const loadFromLocalStorageBackup = () => {
+    if (isPWA()) {
+      try {
+        // Prima controlla se il setup è stato completato
+        const setupCompleted = localStorage.getItem('budget-setup-completed');
+        console.log("Setup completed da localStorage:", setupCompleted);
+        
+        if (setupCompleted === 'true') {
+          // Carica il backup completo
+          const fullBackup = localStorage.getItem('budget-app-full-backup');
+          if (fullBackup) {
+            const backupData = JSON.parse(fullBackup);
+            console.log("Backup completo trovato:", backupData);
+            
+            // Applica i dati dal backup
+            setUserSettings(backupData.userSettings || userSettings);
+            setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
+            setLastPaydayDate(backupData.lastPaydayDate || '');
+            setNextPaydayDate(backupData.nextPaydayDate || '');
+            setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
+            setStreak(ensureNumber(backupData.streak, 0));
+            setAchievements(backupData.achievements || []);
+            
+            return true; // Indica che i dati sono stati caricati
+          }
+        }
+      } catch (e) {
+        console.error("Errore nel caricamento da localStorage:", e);
+      }
+    }
+    return false; // Nessun dato caricato
+  };
+
   // Funzione ottimizzata per salvare subito tutte le impostazioni
   const saveAllSettings = async () => {
     try {
@@ -197,27 +258,9 @@ export const AppProvider = ({ children }) => {
         setupCompleted: userSettings.setupCompleted
       });
 
-      // Per PWA, salva sempre prima in localStorage come backup IMMEDIATO
-      if (isPWA()) {
-        try {
-          localStorage.setItem('budget-app-backup', JSON.stringify({
-            monthlyIncome: Number(monthlyIncome),
-            lastPaydayDate,
-            nextPaydayDate,
-            savingsPercentage: Number(savingsPercentage),
-            userSettings,
-            timestamp: new Date().toISOString()
-          }));
-          console.log("Backup localStorage creato con successo");
-        } catch (e) {
-          console.error("Errore nel backup localStorage:", e);
-        }
-      }
-      
       const settings = {
-        id: 1, // ID fisso per le impostazioni
+        id: 1,
         userSettings,
-        // Assicurati che i valori siano esplicitamente numeri
         monthlyIncome: Number(monthlyIncome),
         lastPaydayDate,
         nextPaydayDate,
@@ -225,21 +268,27 @@ export const AppProvider = ({ children }) => {
         streak: Number(streak),
         achievements
       };
+
+      // PRIMA salva in localStorage per PWA (più affidabile)
+      saveToLocalStorageBackup(settings);
       
+      // POI prova a salvare nel database
       await saveSettings(settings);
       console.log("Impostazioni salvate con successo nel database:", settings);
-
-      // Per mantenere la persistenza su PWA, aggiungiamo una voce in localStorage
-      if (isPWA()) {
-        localStorage.setItem('budget-app-saved', new Date().toISOString());
-        
-        // Salva anche valori critici in localStorage come backup
-        localStorage.setItem('budget-app-income', String(monthlyIncome));
-        localStorage.setItem('budget-app-savings-percentage', String(savingsPercentage));
-      }
       
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
+      
+      // Se il database fallisce, assicurati che almeno localStorage funzioni
+      saveToLocalStorageBackup({
+        userSettings,
+        monthlyIncome,
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage,
+        streak,
+        achievements
+      });
       
       // Retry migliorato per PWA
       if (isPWA()) {
@@ -248,7 +297,6 @@ export const AppProvider = ({ children }) => {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             await new Promise(resolve => setTimeout(resolve, attempt * 1000));
-            // Rinitializziamo il database prima di riprovare
             await initDB();
             
             const settingsRetry = {
@@ -264,11 +312,11 @@ export const AppProvider = ({ children }) => {
             
             await saveSettings(settingsRetry);
             console.log(`Recupero salvataggio PWA riuscito al tentativo ${attempt}`);
-            return; // Esci dal loop se il salvataggio è riuscito
+            return;
           } catch (retryError) {
             console.error(`Tentativo ${attempt} fallito:`, retryError);
             if (attempt === 3) {
-              console.error("Tutti i tentativi di recupero sono falliti");
+              console.error("Tutti i tentativi di recupero sono falliti, ma localStorage dovrebbe funzionare");
             }
           }
         }
@@ -276,26 +324,48 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Funzione per completare il setup iniziale
+  // Funzione completeSetup MIGLIORATA
   const completeSetup = () => {
-    setUserSettings(prev => ({
-      ...prev,
-      setupCompleted: true
-    }));
+    console.log("Completamento setup iniziale...");
     
-    // Salva esplicitamente le impostazioni aggiornate con un ritardo maggiore per PWA
-    const saveDelay = isPWA() ? 1000 : 200;
+    const newUserSettings = {
+      ...userSettings,
+      setupCompleted: true
+    };
+    
+    setUserSettings(newUserSettings);
+    
+    // SALVA IMMEDIATAMENTE in localStorage per PWA
+    if (isPWA()) {
+      try {
+        localStorage.setItem('budget-setup-completed', 'true');
+        saveToLocalStorageBackup({
+          userSettings: newUserSettings,
+          monthlyIncome,
+          lastPaydayDate,
+          nextPaydayDate,
+          savingsPercentage,
+          streak,
+          achievements
+        });
+        console.log("Setup completion salvato immediatamente in localStorage");
+      } catch (e) {
+        console.error("Errore nel salvataggio immediato localStorage:", e);
+      }
+    }
+    
+    // Poi salva anche nel database
     setTimeout(() => {
       saveAllSettings();
       
       // Su PWA potrebbe essere necessario un secondo tentativo
       if (isPWA()) {
         setTimeout(() => {
-          console.log("Secondo tentativo di salvataggio in PWA");
+          console.log("Secondo tentativo di salvataggio setup in PWA");
           saveAllSettings();
         }, 1500);
       }
-    }, saveDelay);
+    }, 200);
   };
 
   // Funzione migliorata per il caricamento con fallback su localStorage
@@ -303,100 +373,81 @@ export const AppProvider = ({ children }) => {
     try {
       setIsLoading(true);
       
+      // Per PWA, prova PRIMA localStorage
+      if (isPWA()) {
+        console.log("PWA rilevata, controllo localStorage prima del database...");
+        
+        const loadedFromLocalStorage = loadFromLocalStorageBackup();
+        if (loadedFromLocalStorage) {
+          console.log("Dati caricati con successo da localStorage, continuo con il resto");
+          // Continua con il caricamento del database ma i dati critici sono già caricati
+        }
+      }
+      
       // Inizializza il database
       await initDB();
       
-      // Su PWA, piccolo ritardo aggiuntivo per assicurarsi che il DB sia pronto
+      // Su PWA, piccolo ritardo aggiuntivo
       if (isPWA()) {
         await new Promise(resolve => setTimeout(resolve, 800));
       }
       
-      // Carica le impostazioni salvate
+      // Carica le impostazioni dal database (se non già caricate da localStorage)
       let settingsData = await getSettings();
       console.log("Impostazioni caricate dal database:", settingsData);
       
-      // Se non ci sono dati nel database, prova il backup localStorage
+      // Se non abbiamo dati dal database E non li abbiamo già da localStorage
       if ((!settingsData || settingsData.length === 0) && isPWA()) {
         console.log("Nessun dato nel database, controllo backup localStorage...");
         
-        try {
-          const backup = localStorage.getItem('budget-app-backup');
-          if (backup) {
-            const backupData = JSON.parse(backup);
-            console.log("Backup trovato in localStorage:", backupData);
-            
-            // Ripristina i dati dal backup
-            setUserSettings(backupData.userSettings || userSettings);
-            setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
-            setLastPaydayDate(backupData.lastPaydayDate || '');
-            setNextPaydayDate(backupData.nextPaydayDate || '');
-            setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
-            
-            // Salva nel database per il futuro
-            const settingsToSave = {
-              id: 1,
-              userSettings: backupData.userSettings || userSettings,
-              monthlyIncome: Number(backupData.monthlyIncome || 0),
-              lastPaydayDate: backupData.lastPaydayDate || '',
-              nextPaydayDate: backupData.nextPaydayDate || '',
-              savingsPercentage: Number(backupData.savingsPercentage || 10),
-              streak: 0,
-              achievements: []
-            };
-            
-            await saveSettings(settingsToSave);
-            console.log("Dati ripristinati dal backup e salvati nel database");
-            
-            settingsData = [settingsToSave]; // Aggiorna per il resto della funzione
-          }
-        } catch (e) {
-          console.error("Errore nel ripristino dal backup localStorage:", e);
-        }
-      }
-      
-      // Fallback aggiuntivo per PWA con localStorage legacy
-      if ((!settingsData || settingsData.length === 0) && isPWA()) {
-        console.log("Controllo backup legacy localStorage...");
-        
-        try {
-          const savedTimestamp = localStorage.getItem('budget-app-saved');
-          if (savedTimestamp) {
-            console.log(`Ultimo salvataggio rilevato: ${savedTimestamp}`);
-            
-            // Recupera direttamente da localStorage i valori critici
-            const localIncome = localStorage.getItem('budget-app-income');
-            const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
-            
-            if (localIncome || localSavingsPercentage) {
-              setMonthlyIncome(ensureNumber(localIncome, 0));
-              setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
+        // Se non abbiamo già caricato da localStorage, proviamo ora
+        const setupCompleted = localStorage.getItem('budget-setup-completed');
+        if (setupCompleted === 'true') {
+          try {
+            const fullBackup = localStorage.getItem('budget-app-full-backup');
+            if (fullBackup) {
+              const backupData = JSON.parse(fullBackup);
+              console.log("Backup trovato in localStorage:", backupData);
               
-              console.log("Recupero dati da localStorage legacy:", {
-                monthlyIncome: ensureNumber(localIncome, 0),
-                savingsPercentage: ensureNumber(localSavingsPercentage, 10)
-              });
+              // Se non abbiamo già impostato questi valori, fallo ora
+              if (userSettings.setupCompleted !== true) {
+                setUserSettings(backupData.userSettings || userSettings);
+                setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
+                setLastPaydayDate(backupData.lastPaydayDate || '');
+                setNextPaydayDate(backupData.nextPaydayDate || '');
+                setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
+              }
               
-              // Tentativo di reinizializzazione DB
-              console.log("Tentativo di reinizializzazione DB");
-              await initDB();
-              const retrySettings = await getSettings();
+              // Salva nel database per il futuro
+              const settingsToSave = {
+                id: 1,
+                userSettings: backupData.userSettings || userSettings,
+                monthlyIncome: Number(backupData.monthlyIncome || 0),
+                lastPaydayDate: backupData.lastPaydayDate || '',
+                nextPaydayDate: backupData.nextPaydayDate || '',
+                savingsPercentage: Number(backupData.savingsPercentage || 10),
+                streak: Number(backupData.streak || 0),
+                achievements: backupData.achievements || []
+              };
               
-              if (retrySettings && retrySettings.length > 0) {
-                console.log("Recupero dati riuscito al secondo tentativo");
-                settingsData = retrySettings;
+              try {
+                await saveSettings(settingsToSave);
+                console.log("Dati ripristinati dal backup e salvati nel database");
+                settingsData = [settingsToSave];
+              } catch (saveError) {
+                console.error("Errore nel salvataggio nel database, ma localStorage funziona:", saveError);
               }
             }
+          } catch (e) {
+            console.error("Errore nel ripristino dal backup localStorage:", e);
           }
-        } catch (e) {
-          console.error("Errore nel recupero legacy:", e);
         }
       }
       
-      // Processa i dati caricati
-      if (settingsData && settingsData.length > 0) {
+      // Processa i dati caricati (dal database o da localStorage)
+      if (settingsData && settingsData.length > 0 && userSettings.setupCompleted !== true) {
         const settings = settingsData[0];
         
-        // Conversione esplicita di tutti i valori numerici per evitare problemi di tipo
         setUserSettings(settings.userSettings || userSettings);
         setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
         setLastPaydayDate(settings.lastPaydayDate || '');
@@ -405,13 +456,13 @@ export const AppProvider = ({ children }) => {
         setStreak(ensureNumber(settings.streak, 0));
         setAchievements(settings.achievements || []);
         
-        console.log('Dati finali caricati e convertiti:', {
+        console.log('Dati finali caricati:', {
           monthlyIncome: ensureNumber(settings.monthlyIncome, 0),
           savingsPercentage: ensureNumber(settings.savingsPercentage, 10),
           setupCompleted: settings.userSettings?.setupCompleted
         });
         
-        // Imposta i colori del tema in base al themeId
+        // Imposta i colori del tema
         if (settings.userSettings && settings.userSettings.themeId) {
           const themeId = settings.userSettings.themeId;
           if (THEMES[themeId]) {
@@ -420,7 +471,7 @@ export const AppProvider = ({ children }) => {
         }
       }
       
-      // Carica tutti gli altri dati in parallelo per migliorare le performance
+      // Carica tutti gli altri dati in parallelo
       const [transactionsData, fixedExpensesData, futureExpensesData, savingsData] = await Promise.all([
         getTransactions(),
         getFixedExpenses(),
@@ -428,9 +479,8 @@ export const AppProvider = ({ children }) => {
         getSavingsHistory()
       ]);
       
-      // Carica le transazioni
+      // Processa i dati caricati
       if (transactionsData) {
-        // Assicuriamo che tutti gli importi siano numeri
         const processedTransactions = transactionsData.map(transaction => ({
           ...transaction,
           amount: ensureNumber(transaction.amount, 0)
@@ -438,21 +488,15 @@ export const AppProvider = ({ children }) => {
         setTransactions(processedTransactions);
       }
       
-      // Carica le spese fisse
       if (fixedExpensesData) {
-        // Assicuriamo che tutti gli importi siano numeri
         setFixedExpenses(ensureNumberInExpenses(fixedExpensesData));
       }
       
-      // Carica le spese future
       if (futureExpensesData) {
-        // Assicuriamo che tutti gli importi siano numeri
         setFutureExpenses(ensureNumberInExpenses(futureExpensesData));
       }
       
-      // Carica la cronologia risparmi
       if (savingsData) {
-        // Assicuriamo che tutti gli importi siano numeri
         const processedSavings = savingsData.map(entry => ({
           ...entry,
           amount: ensureNumber(entry.amount, 0),
@@ -460,7 +504,6 @@ export const AppProvider = ({ children }) => {
         }));
         setSavingsHistory(processedSavings);
         
-        // Calcola il totale dei risparmi
         if (processedSavings.length > 0) {
           const lastSavingsEntry = processedSavings[processedSavings.length - 1];
           setTotalSavings(ensureNumber(lastSavingsEntry.total, 0));
@@ -473,60 +516,34 @@ export const AppProvider = ({ children }) => {
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error);
       
-      // Fallback finale per PWA
+      // Fallback finale per PWA - usa solo localStorage
       if (isPWA()) {
-        console.log("Tentativo di fallback finale per PWA");
+        console.log("Tentativo di fallback finale per PWA usando solo localStorage");
         try {
-          // Recupero da localStorage
-          const localIncome = localStorage.getItem('budget-app-income');
-          const localSavingsPercentage = localStorage.getItem('budget-app-savings-percentage');
-          
-          if (localIncome) {
-            setMonthlyIncome(ensureNumber(localIncome, 0));
+          const loadedFromFallback = loadFromLocalStorageBackup();
+          if (!loadedFromFallback) {
+            console.log("Nessun backup localStorage trovato, setup necessario");
           }
-          
-          if (localSavingsPercentage) {
-            setSavingsPercentage(ensureNumber(localSavingsPercentage, 10));
-          }
-          
-          // Forza la chiusura e reinizializzazione del DB
-          await clearDatabase();
-          await initDB();
-          
-          // Retry dopo 1 secondo
-          setTimeout(async () => {
-            try {
-              const retrySettings = await getSettings();
-              if (retrySettings && retrySettings.length > 0) {
-                // Recupero dati...
-                const settings = retrySettings[0];
-                setUserSettings(settings.userSettings || userSettings);
-                setMonthlyIncome(ensureNumber(settings.monthlyIncome, ensureNumber(localIncome, 0)));
-                setLastPaydayDate(settings.lastPaydayDate || '');
-                setNextPaydayDate(settings.nextPaydayDate || '');
-                setSavingsPercentage(ensureNumber(settings.savingsPercentage, ensureNumber(localSavingsPercentage, 10)));
-                setStreak(ensureNumber(settings.streak, 0));
-                setAchievements(settings.achievements || []);
-              }
-            } catch (e) {
-              console.error("Fallback finale fallito:", e);
-            } finally {
-              setIsLoading(false);
-            }
-          }, 1000);
         } catch (e) {
           console.error("Fallback finale fallito completamente:", e);
-          setIsLoading(false);
         }
-      } else {
-        setIsLoading(false);
       }
+      
+      setIsLoading(false);
     }
   };
 
   // Inizializzazione del database e caricamento dati
   useEffect(() => {
     loadDataWithFallback();
+  }, []);
+
+  // Registra la funzione di salvataggio globale per PWA
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.registerGlobalSaveFunction) {
+      window.registerGlobalSaveFunction(saveAllSettings);
+      console.log("Funzione di salvataggio registrata per PWA");
+    }
   }, []);
   
   // Salva le impostazioni quando cambiano con debounce ottimizzato
@@ -1198,6 +1215,8 @@ export const AppProvider = ({ children }) => {
         localStorage.removeItem('budget-app-income');
         localStorage.removeItem('budget-app-savings-percentage');
         localStorage.removeItem('budget-app-backup');
+        localStorage.removeItem('budget-setup-completed');
+        localStorage.removeItem('budget-app-full-backup');
       }
       
       setIsLoading(false);
