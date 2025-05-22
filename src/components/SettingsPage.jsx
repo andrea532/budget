@@ -20,21 +20,116 @@ import {
   Check,
   RefreshCw,
   AlertTriangle,
+  Database,
+  Download,
+  Upload,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
+import { getBackupInfo, createManualBackup, isPWA } from '../services/db';
 
 const SettingsPage = () => {
-  const { theme, userSettings, setUserSettings, setCurrentView, updateThemeColors, activeTheme, resetApp } =
-    useContext(AppContext);
+  const { 
+    theme, 
+    userSettings, 
+    setUserSettings, 
+    setCurrentView, 
+    updateThemeColors, 
+    activeTheme, 
+    resetApp,
+    backupStatus,
+    setBackupStatus,
+    createAutoBackup,
+    verifyDataIntegrity
+  } = useContext(AppContext);
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmationStep, setResetConfirmationStep] = useState(1);
+  
+  // NUOVO: Stati per gestione backup
+  const [backupInfo, setBackupInfo] = useState({ exists: false });
+  const [showBackupDetails, setShowBackupDetails] = useState(false);
+  const [backupOperationStatus, setBackupOperationStatus] = useState('');
 
-  // Opzioni di tema disponibili con colori di sfondo personalizzati
+  // NUOVO: Carica informazioni backup all'avvio
+  useEffect(() => {
+    loadBackupInfo();
+  }, []);
+
+  const loadBackupInfo = () => {
+    try {
+      const info = getBackupInfo();
+      setBackupInfo(info);
+      console.log("Informazioni backup caricate:", info);
+    } catch (error) {
+      console.error("Errore nel caricamento info backup:", error);
+    }
+  };
+
+  // NUOVO: Crea backup manuale
+  const handleCreateBackup = async () => {
+    setBackupOperationStatus('creating');
+    try {
+      console.log("Creazione backup manuale...");
+      const backup = await createManualBackup();
+      
+      if (backup) {
+        setBackupOperationStatus('success');
+        loadBackupInfo(); // Ricarica le informazioni
+        
+        // Aggiorna anche lo stato del context
+        setBackupStatus(prev => ({
+          ...prev,
+          lastBackup: new Date().toISOString()
+        }));
+        
+        setTimeout(() => setBackupOperationStatus(''), 3000);
+      } else {
+        throw new Error('Backup non creato');
+      }
+    } catch (error) {
+      console.error("Errore nella creazione del backup:", error);
+      setBackupOperationStatus('error');
+      setTimeout(() => setBackupOperationStatus(''), 3000);
+    }
+  };
+
+  // NUOVO: Verifica integrità dati
+  const handleVerifyData = async () => {
+    setBackupOperationStatus('verifying');
+    try {
+      const result = await verifyDataIntegrity();
+      if (result) {
+        setBackupOperationStatus('restored');
+      } else {
+        setBackupOperationStatus('verified');
+      }
+      setTimeout(() => setBackupOperationStatus(''), 3000);
+    } catch (error) {
+      console.error("Errore nella verifica dati:", error);
+      setBackupOperationStatus('error');
+      setTimeout(() => setBackupOperationStatus(''), 3000);
+    }
+  };
+
+  // NUOVO: Toggle backup automatico
+  const toggleAutoBackup = () => {
+    setBackupStatus(prev => ({
+      ...prev,
+      autoBackupEnabled: !prev.autoBackupEnabled
+    }));
+    
+    setUserSettings(prev => ({
+      ...prev,
+      autoBackupEnabled: !backupStatus.autoBackupEnabled
+    }));
+  };
+
+  // Opzioni di tema disponibili
   const themeOptions = [
-    // Temi disponibili
     { 
       id: 'blue', 
       name: 'Blu Classico', 
@@ -42,7 +137,7 @@ const SettingsPage = () => {
       secondary: '#2ECC71',
       danger: '#FF5252',
       warning: '#FFB74D',
-      background: '#ECF1FF', // Sfondo blu chiaro
+      background: '#ECF1FF',
       card: '#FFFFFF',
       darkBackground: '#1A1B21',
       darkCard: '#25262E',
@@ -54,7 +149,7 @@ const SettingsPage = () => {
       secondary: '#388E3C',
       danger: '#D32F2F',
       warning: '#FFB74D',
-      background: '#EDFBEF', // Sfondo verde chiaro
+      background: '#EDFBEF',
       card: '#FFFFFF',
       darkBackground: '#1A2017',
       darkCard: '#252E25',
@@ -66,7 +161,7 @@ const SettingsPage = () => {
       secondary: '#607D8B',
       danger: '#F44336',
       warning: '#FFB74D',
-      background: '#ECEFF1', // Sfondo grigio chiaro
+      background: '#ECEFF1',
       card: '#FFFFFF',
       darkBackground: '#1A1A1D',
       darkCard: '#282831',
@@ -78,7 +173,7 @@ const SettingsPage = () => {
       secondary: '#E91E63',
       danger: '#FF5252',
       warning: '#FFB74D',
-      background: '#F3E5F5', // Sfondo viola chiaro
+      background: '#F3E5F5',
       card: '#FFFFFF',
       darkBackground: '#22162B',
       darkCard: '#341C42',
@@ -90,7 +185,7 @@ const SettingsPage = () => {
       secondary: '#FF4081',
       danger: '#FF5252',
       warning: '#FFB74D',
-      background: '#FCE4EC', // Sfondo rosa chiaro
+      background: '#FCE4EC',
       card: '#FFFFFF',
       darkBackground: '#2A151E',
       darkCard: '#3D1F2D',
@@ -102,7 +197,7 @@ const SettingsPage = () => {
       secondary: '#26A69A',
       danger: '#F44336',
       warning: '#FFB74D',
-      background: '#E0F2F1', // Sfondo turchese chiaro
+      background: '#E0F2F1',
       card: '#FFFFFF',
       darkBackground: '#0F2A29',
       darkCard: '#1A3D3A',
@@ -133,7 +228,6 @@ const SettingsPage = () => {
     },
   };
 
-  // Trova il tema corrente
   const getCurrentTheme = () => {
     if (!userSettings.themeId) {
       return userSettings.darkMode ? 'Tema scuro' : 'Tema chiaro';
@@ -143,19 +237,14 @@ const SettingsPage = () => {
     return currentTheme ? currentTheme.name : 'Personalizzato';
   };
 
-  // Cambia tema
   const setTheme = (themeId) => {
-    // Aggiorniamo le impostazioni utente
     setUserSettings(prev => ({
       ...prev,
       themeId: themeId,
-      // Manteniamo la darkMode separata per retrocompatibilità
       darkMode: prev.darkMode
     }));
     
-    // Aggiorniamo i colori del tema direttamente
     updateThemeColors(themeId);
-    
     setShowThemeSelector(false);
   };
 
@@ -173,16 +262,63 @@ const SettingsPage = () => {
     }));
   };
 
-  // Funzione per gestire il processo di reset in due step
   const handleResetApp = () => {
     if (resetConfirmationStep === 1) {
       setResetConfirmationStep(2);
     } else {
-      // Reset effettivo
       resetApp();
       setShowResetConfirm(false);
       setResetConfirmationStep(1);
     }
+  };
+
+  // NUOVO: Componente per lo status delle operazioni di backup
+  const BackupOperationStatus = () => {
+    if (!backupOperationStatus) return null;
+
+    const statusConfig = {
+      creating: { icon: RefreshCw, color: theme.primary, text: "Creazione backup...", spin: true },
+      success: { icon: CheckCircle, color: theme.secondary, text: "Backup creato con successo!" },
+      error: { icon: XCircle, color: theme.danger, text: "Errore nell'operazione" },
+      verifying: { icon: RefreshCw, color: theme.primary, text: "Verifica in corso...", spin: true },
+      verified: { icon: CheckCircle, color: theme.secondary, text: "Dati verificati correttamente" },
+      restored: { icon: CheckCircle, color: theme.warning, text: "Dati ripristinati da backup" }
+    };
+
+    const config = statusConfig[backupOperationStatus];
+    const Icon = config?.icon || Info;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: theme.card,
+          color: config?.color || theme.text,
+          padding: '12px 24px',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          border: `1px solid ${config?.color || theme.border}`,
+        }}
+      >
+        <motion.div
+          animate={config?.spin ? { rotate: 360 } : {}}
+          transition={config?.spin ? { duration: 1, repeat: Infinity, ease: "linear" } : {}}
+        >
+          <Icon size={20} />
+        </motion.div>
+        <span style={{ fontWeight: '500' }}>{config?.text}</span>
+      </motion.div>
+    );
   };
 
   const SettingItem = ({
@@ -212,7 +348,6 @@ const SettingsPage = () => {
         overflow: 'hidden',
       }}
     >
-      {/* Hover effect background */}
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
         whileHover={{ scale: 2, opacity: 0.1 }}
@@ -301,6 +436,11 @@ const SettingsPage = () => {
       className="settings-page"
       style={{ paddingBottom: '100px' }}
     >
+      {/* Status operazioni backup */}
+      <AnimatePresence>
+        <BackupOperationStatus />
+      </AnimatePresence>
+
       {/* Header */}
       <motion.div
         initial={{ y: -20, opacity: 0 }}
@@ -325,6 +465,189 @@ const SettingsPage = () => {
           Personalizza la tua esperienza
         </p>
       </motion.div>
+
+      {/* NUOVO: Sezione Backup e Sicurezza Dati */}
+      {isPWA() && (
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          style={{
+            margin: '0 16px 24px',
+            padding: '20px',
+            borderRadius: '24px',
+            backgroundColor: theme.card,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          <motion.h3
+            variants={itemVariants}
+            style={{
+              fontSize: '18px',
+              fontWeight: '600',
+              color: theme.text,
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <Database size={20} style={{ color: theme.primary }} />
+            Backup e Sicurezza Dati
+          </motion.h3>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Stato del backup */}
+            <motion.div
+              variants={itemVariants}
+              style={{
+                padding: '16px',
+                borderRadius: '16px',
+                backgroundColor: backupInfo.exists ? `${theme.secondary}15` : `${theme.warning}15`,
+                border: `1px solid ${backupInfo.exists ? `${theme.secondary}30` : `${theme.warning}30`}`,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                {backupInfo.exists ? (
+                  <CheckCircle size={20} style={{ color: theme.secondary }} />
+                ) : (
+                  <AlertTriangle size={20} style={{ color: theme.warning }} />
+                )}
+                <h4 style={{ fontSize: '16px', fontWeight: '600', color: theme.text }}>
+                  {backupInfo.exists ? 'Backup Disponibile' : 'Nessun Backup'}
+                </h4>
+              </div>
+              
+              {backupInfo.exists ? (
+                <div>
+                  <p style={{ fontSize: '14px', color: theme.text, marginBottom: '4px' }}>
+                    Ultimo backup: {backupInfo.timestamp ? new Date(backupInfo.timestamp).toLocaleString('it-IT') : 'N/D'}
+                  </p>
+                  <p style={{ fontSize: '14px', color: theme.textSecondary }}>
+                    {backupInfo.totalItems} elementi salvati
+                  </p>
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowBackupDetails(!showBackupDetails)}
+                    style={{
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'transparent',
+                      color: theme.primary,
+                      border: `1px solid ${theme.primary}`,
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {showBackupDetails ? 'Nascondi dettagli' : 'Mostra dettagli'}
+                  </motion.button>
+                  
+                  <AnimatePresence>
+                    {showBackupDetails && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden', marginTop: '12px' }}
+                      >
+                        <div style={{ 
+                          padding: '12px', 
+                          backgroundColor: theme.background, 
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          color: theme.textSecondary
+                        }}>
+                          {backupInfo.itemCounts && Object.entries(backupInfo.itemCounts).map(([store, count]) => (
+                            <div key={store} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span>{store}:</span>
+                              <span>{count} elementi</span>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <p style={{ fontSize: '14px', color: theme.text }}>
+                  Ti consigliamo di creare un backup per proteggere i tuoi dati.
+                </p>
+              )}
+            </motion.div>
+
+            {/* Backup automatico toggle */}
+            <SettingItem
+              icon={RefreshCw}
+              title="Backup Automatico"
+              description={
+                backupStatus.autoBackupEnabled
+                  ? 'Backup automatici attivi'
+                  : 'Backup automatici disattivati'
+              }
+              action={toggleAutoBackup}
+              toggle={true}
+              toggleValue={backupStatus.autoBackupEnabled}
+              color="#10B981"
+            />
+
+            {/* Azioni backup */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleCreateBackup}
+                disabled={backupOperationStatus === 'creating'}
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  backgroundColor: theme.primary,
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: backupOperationStatus === 'creating' ? 'not-allowed' : 'pointer',
+                  opacity: backupOperationStatus === 'creating' ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Download size={16} />
+                {backupOperationStatus === 'creating' ? 'Creando...' : 'Crea Backup'}
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleVerifyData}
+                disabled={backupOperationStatus === 'verifying'}
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  backgroundColor: theme.background,
+                  color: theme.text,
+                  border: `1px solid ${theme.border}`,
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: backupOperationStatus === 'verifying' ? 'not-allowed' : 'pointer',
+                  opacity: backupOperationStatus === 'verifying' ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Shield size={16} />
+                {backupOperationStatus === 'verifying' ? 'Verificando...' : 'Verifica Dati'}
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Account e Preferenze */}
       <motion.div
@@ -437,7 +760,7 @@ const SettingsPage = () => {
         </div>
       </motion.div>
 
-      {/* Selettore Tema (Overlay) */}
+      {/* Selettore Tema (resto del codice uguale...) */}
       <AnimatePresence>
         {showThemeSelector && (
           <motion.div
@@ -487,7 +810,6 @@ const SettingsPage = () => {
                 Scegli il tuo tema
               </h3>
 
-              {/* Temi disponibili */}
               <div 
                 style={{
                   display: 'grid',
@@ -513,7 +835,6 @@ const SettingsPage = () => {
                       position: 'relative',
                     }}
                   >
-                    {/* Indicatore di selezione */}
                     {userSettings.themeId === themeOption.id && (
                       <motion.div
                         initial={{ scale: 0 }}
@@ -536,7 +857,6 @@ const SettingsPage = () => {
                       </motion.div>
                     )}
                     
-                    {/* Nome del tema */}
                     <div
                       style={{
                         display: 'flex',
@@ -564,7 +884,6 @@ const SettingsPage = () => {
                       </div>
                     </div>
                     
-                    {/* Anteprima del tema */}
                     <div
                       style={{
                         backgroundColor: userSettings.darkMode ? themeOption.darkCard : themeOption.card,
@@ -573,7 +892,6 @@ const SettingsPage = () => {
                         boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
                       }}
                     >
-                      {/* Budget entrate/uscite */}
                       <div
                         style={{
                           display: 'flex',
@@ -607,7 +925,6 @@ const SettingsPage = () => {
                         </div>
                       </div>
                       
-                      {/* Budget disponibile */}
                       <div
                         style={{
                           padding: '10px',
@@ -624,7 +941,6 @@ const SettingsPage = () => {
                 ))}
               </div>
 
-              {/* Alternanza Modalità Chiaro/Scuro */}
               <div
                 style={{
                   display: 'flex',
@@ -654,7 +970,6 @@ const SettingsPage = () => {
                 </motion.button>
               </div>
               
-              {/* Pulsante Chiudi */}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -881,7 +1196,6 @@ const SettingsPage = () => {
               overflow: 'hidden',
             }}
           >
-            {/* Hover effect background */}
             <motion.div
               initial={{ scale: 0, opacity: 0 }}
               whileHover={{ scale: 2, opacity: 0.1 }}
@@ -996,7 +1310,7 @@ const SettingsPage = () => {
                   Versione App
                 </p>
                 <p style={{ fontSize: '14px', color: theme.textSecondary }}>
-                  1.0.0
+                  1.1.0 {isPWA() ? '(PWA)' : '(Web)'}
                 </p>
               </div>
             </div>
@@ -1284,6 +1598,11 @@ const SettingsPage = () => {
         >
           Sviluppato con ❤️ per aiutarti a gestire le tue finanze
         </motion.p>
+        {isPWA() && (
+          <p style={{ fontSize: '10px', color: theme.textSecondary, marginTop: '4px' }}>
+            PWA • Backup automatico attivo
+          </p>
+        )}
       </motion.div>
     </motion.div>
   );
