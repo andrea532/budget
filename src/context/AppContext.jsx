@@ -379,33 +379,36 @@ const ensureNumber = (value, defaultValue = 0) => {
     }
   };
 
-  // Funzione ottimizzata per salvare subito tutte le impostazioni (con debounce)
-  const saveAllSettings = async () => {
-    if (isLoading) return;
+  // TROVA questa funzione e AGGIUNGI il logging all'inizio:
+const saveAllSettingsImmediate = async () => {
+  if (isLoading) return;
+  
+  try {
+    console.log("Salvataggio immediato delle impostazioni...");
+    // AGGIUNGI queste righe:
+    console.log("Dati da salvare:", {
+      monthlyIncome: Number(monthlyIncome),
+      savingsPercentage: Number(savingsPercentage), // Questo mostrerà il valore reale
+      userSettings,
+      lastPaydayDate,
+      nextPaydayDate
+    });
+
+    const settings = {
+      id: 1,
+      userSettings,
+      monthlyIncome: Number(monthlyIncome),
+      lastPaydayDate,
+      nextPaydayDate,
+      savingsPercentage: Number(savingsPercentage), // Mantiene 0 se impostato
+      streak: Number(streak),
+      achievements
+    };
+
+    await saveSettings(settings);
+    console.log("Salvataggio immediato completato con successo");
     
-    try {
-      console.log("Tentativo di salvataggio impostazioni:", {
-        monthlyIncome,
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage,
-        setupCompleted: userSettings.setupCompleted
-      });
-
-      const settings = {
-        id: 1,
-        userSettings,
-        monthlyIncome: Number(monthlyIncome),
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage: Number(savingsPercentage),
-        streak: Number(streak),
-        achievements
-      };
-
-      await saveSettings(settings);
-      console.log("Impostazioni salvate con successo nel database:", settings);
-      
+    // resto della funzione rimane uguale...
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
       
