@@ -1,28 +1,182 @@
 <!DOCTYPE html>
 <html lang="it">
   <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA Meta Tags -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#4C6FFF">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Budget App">
-    <link rel="apple-touch-icon" href="/icons/apple-icon-180.png">
-    <meta name="description" content="Gestisci il tuo budget giornaliero in modo efficace">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-    <!-- Aggiungi queste meta per iOS -->
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-    <link rel="apple-touch-startup-image" href="/icons/apple-splash-2048-2732.jpg" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="/icons/apple-splash-1668-2388.jpg" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="/icons/apple-splash-1536-2048.jpg" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="/icons/apple-splash-1125-2436.jpg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-    <link rel="apple-touch-startup-image" href="/icons/apple-splash-1242-2688.jpg" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Daily Budget</title>
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-192x192.png">
+    
+    <!-- Splash Screens iOS -->
+    <link rel="apple-touch-startup-image" href="/ios/apple-splash-2048-2732.jpg" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/ios/apple-splash-1668-2388.jpg" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/ios/apple-splash-1536-2048.jpg" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/ios/apple-splash-1125-2436.jpg" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+    <link rel="apple-touch-startup-image" href="/ios/apple-splash-1242-2688.jpg" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)">
+    
+    <!-- Meta Description -->
+    <meta name="description" content="Gestisci il tuo budget giornaliero in modo efficace con Budget App PWA">
+    <meta name="keywords" content="budget, finanze personali, spese, entrate, PWA">
+    <meta name="author" content="Budget App">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Daily Budget Manager">
+    <meta property="og:description" content="Gestisci il tuo budget giornaliero in modo semplice ed efficace">
+    <meta property="og:image" content="/icons/icon-512x512.png">
+    <meta property="og:url" content="/">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Daily Budget Manager">
+    <meta name="twitter:description" content="Gestisci il tuo budget giornaliero in modo semplice ed efficace">
+    <meta name="twitter:image" content="/icons/icon-512x512.png">
+    
+    <title>Daily Budget - Gestisci le tue finanze</title>
+    
+    <!-- Preload fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Prevent zoom on inputs (iOS) -->
+    <style>
+      input[type="color"],
+      input[type="date"],
+      input[type="datetime"],
+      input[type="datetime-local"],
+      input[type="email"],
+      input[type="month"],
+      input[type="number"],
+      input[type="password"],
+      input[type="search"],
+      input[type="tel"],
+      input[type="text"],
+      input[type="time"],
+      input[type="url"],
+      input[type="week"],
+      select:focus,
+      textarea {
+        font-size: 16px !important;
+      }
+      
+      /* Loading animation */
+      .app-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #4C6FFF 0%, #5A85FF 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-family: 'Inter', sans-serif;
+        z-index: 9999;
+      }
+      
+      .app-loading .logo {
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        margin-bottom: 20px;
+        animation: pulse 2s infinite;
+      }
+      
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+      
+      .app-loading .title {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      
+      .app-loading .subtitle {
+        font-size: 14px;
+        opacity: 0.8;
+      }
+    </style>
   </head>
   <body>
+    <!-- Loading Screen -->
+    <div id="loading" class="app-loading">
+      <div class="logo">💰</div>
+      <div class="title">Budget App</div>
+      <div class="subtitle">Caricamento...</div>
+    </div>
+    
+    <!-- App Root -->
     <div id="root"></div>
+    
+    <!-- Script principale -->
     <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- Script per nascondere il loading -->
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loading = document.getElementById('loading');
+          if (loading) {
+            loading.style.opacity = '0';
+            loading.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => {
+              loading.style.display = 'none';
+            }, 500);
+          }
+        }, 1000);
+      });
+      
+      // Debug PWA
+      if ('serviceWorker' in navigator) {
+        console.log('✅ Service Worker supportato');
+      }
+      
+      // Verifica se è PWA
+      if (window.matchMedia('(display-mode: standalone)').matches) {
+        console.log('✅ App in modalità PWA');
+        document.body.classList.add('pwa-mode');
+      }
+      
+      // Verifica localStorage
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+        console.log('✅ LocalStorage funzionante');
+      } catch(e) {
+        console.error('❌ LocalStorage non funzionante:', e);
+      }
+      
+      console.log('🚀 Budget App PWA v2.0 - Inizializzazione completata');
+    </script>
+    
+    <!-- Fallback per browser senza JavaScript -->
+    <noscript>
+      <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+        <h1>JavaScript Richiesto</h1>
+        <p>Questa applicazione richiede JavaScript per funzionare correttamente.</p>
+        <p>Per favore abilita JavaScript nel tuo browser.</p>
+      </div>
+    </noscript>
   </body>
 </html>
