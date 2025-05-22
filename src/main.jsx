@@ -3,18 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import { initDB } from './services/db';
 
-// Registra il service worker (semplificato)
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/pwabuilder-sw.js')
-      .then(registration => {
-        console.log('Service Worker registrato:', registration);
-      })
-      .catch(error => {
-        console.error('Errore Service Worker:', error);
-      });
-  });
-}
+// Rimuovo completamente il service worker per evitare errori 404
+console.log("App Budget - Versione semplificata senza Service Worker");
 
 // Inizializzazione semplice dell'app
 const initApp = async () => {
