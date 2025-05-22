@@ -1,6 +1,6 @@
 // src/services/db.js - VERSIONE ULTRA ROBUSTA CON FALLBACK LOCALSTORAGE
 const DB_NAME = 'budgetAppDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Incrementato per evitare conflitti
 
 // Fallback keys per localStorage
 const STORAGE_KEYS = {
