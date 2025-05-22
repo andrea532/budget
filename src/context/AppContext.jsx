@@ -17,7 +17,10 @@ import {
   getSavingsHistory,
   addSavingsEntry as dbAddSavingsEntry,
   clearDatabase,
-  isPWA
+  isPWA,
+  createManualBackup,
+  getBackupInfo,
+  restoreFromBackup
 } from '../services/db';
 
 export const AppContext = createContext(null);
@@ -140,11 +143,18 @@ export const AppProvider = ({ children }) => {
     darkMode: false,
     currency: 'EUR',
     language: 'it',
-    themeId: 'blue', // Default theme
-    setupCompleted: false // Aggiunta questa proprietà per tenere traccia se la configurazione iniziale è stata completata
+    themeId: 'blue',
+    setupCompleted: false
   });
   const [isLoading, setIsLoading] = useState(true);
   const [saveTimeout, setSaveTimeout] = useState(null);
+  
+  // NUOVO: Stati per il backup e recovery
+  const [backupStatus, setBackupStatus] = useState({
+    lastBackup: null,
+    autoBackupEnabled: true,
+    backupInProgress: false
+  });
   
   // Stato dei colori del tema (con valori predefiniti)
   const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
@@ -171,7 +181,6 @@ export const AppProvider = ({ children }) => {
 
   // Helper per garantire che i valori siano numeri
   const ensureNumber = (value, defaultValue = 0) => {
-    // Converte esplicitamente in numero, gestendo null, undefined, stringa vuota, etc.
     const num = Number(value);
     return isNaN(num) ? defaultValue : num;
   };
@@ -186,69 +195,188 @@ export const AppProvider = ({ children }) => {
     }));
   };
 
-  // FUNZIONI PWA PER BACKUP LOCALSTORAGE
-  const saveToLocalStorageBackup = (data) => {
-    if (isPWA()) {
-      try {
-        // Salva TUTTI i dati critici in localStorage
-        localStorage.setItem('budget-app-full-backup', JSON.stringify({
-          userSettings: data.userSettings || userSettings,
-          monthlyIncome: Number(data.monthlyIncome || monthlyIncome),
-          lastPaydayDate: data.lastPaydayDate || lastPaydayDate,
-          nextPaydayDate: data.nextPaydayDate || nextPaydayDate,
-          savingsPercentage: Number(data.savingsPercentage || savingsPercentage),
-          streak: Number(data.streak || streak),
-          achievements: data.achievements || achievements,
-          timestamp: new Date().toISOString(),
-          setupCompleted: data.userSettings?.setupCompleted || userSettings.setupCompleted
+  // NUOVO: Sistema di backup automatico migliorato
+  const createAutoBackup = async () => {
+    if (!backupStatus.autoBackupEnabled || backupStatus.backupInProgress) {
+      return false;
+    }
+
+    try {
+      setBackupStatus(prev => ({ ...prev, backupInProgress: true }));
+      console.log("Creazione backup automatico...");
+      
+      const backup = await createManualBackup();
+      
+      if (backup) {
+        setBackupStatus(prev => ({
+          ...prev,
+          lastBackup: new Date().toISOString(),
+          backupInProgress: false
         }));
         
-        // Backup separato solo per setupCompleted (extra sicurezza)
-        localStorage.setItem('budget-setup-completed', String(data.userSettings?.setupCompleted || userSettings.setupCompleted));
-        
-        console.log("Backup completo salvato in localStorage per PWA");
-      } catch (e) {
-        console.error("Errore nel backup localStorage:", e);
+        console.log("Backup automatico completato con successo");
+        return true;
       }
+      
+      return false;
+    } catch (error) {
+      console.error("Errore nel backup automatico:", error);
+      return false;
+    } finally {
+      setBackupStatus(prev => ({ ...prev, backupInProgress: false }));
     }
   };
 
-  // Funzione migliorata per caricare da localStorage
-  const loadFromLocalStorageBackup = () => {
-    if (isPWA()) {
-      try {
-        // Prima controlla se il setup è stato completato
-        const setupCompleted = localStorage.getItem('budget-setup-completed');
-        console.log("Setup completed da localStorage:", setupCompleted);
+  // NUOVO: Funzione per gestire i messaggi del service worker
+  const handleServiceWorkerMessage = (event) => {
+    console.log("Messaggio ricevuto dal Service Worker:", event.data);
+    
+    switch (event.data.type) {
+      case 'PREPARE_FOR_UPDATE':
+        console.log("Preparazione per aggiornamento PWA...");
+        createAutoBackup();
+        break;
         
-        if (setupCompleted === 'true') {
-          // Carica il backup completo
-          const fullBackup = localStorage.getItem('budget-app-full-backup');
-          if (fullBackup) {
-            const backupData = JSON.parse(fullBackup);
-            console.log("Backup completo trovato:", backupData);
-            
-            // Applica i dati dal backup
-            setUserSettings(backupData.userSettings || userSettings);
-            setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
-            setLastPaydayDate(backupData.lastPaydayDate || '');
-            setNextPaydayDate(backupData.nextPaydayDate || '');
-            setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
-            setStreak(ensureNumber(backupData.streak, 0));
-            setAchievements(backupData.achievements || []);
-            
-            return true; // Indica che i dati sono stati caricati
+      case 'SERVICE_WORKER_UPDATED':
+        console.log("Service Worker aggiornato, verifica integrità dati...");
+        setTimeout(verifyDataIntegrity, 2000);
+        break;
+        
+      case 'FORCE_SAVE_DATA':
+      case 'EMERGENCY_SAVE':
+        console.log("Salvataggio forzato richiesto dal SW");
+        saveAllSettingsImmediate();
+        break;
+        
+      case 'CREATE_BACKUP':
+      case 'PERIODIC_BACKUP_REMINDER':
+        if (backupStatus.autoBackupEnabled) {
+          createAutoBackup();
+        }
+        break;
+        
+      case 'HEALTH_CHECK':
+        console.log("Health check dal Service Worker");
+        verifyDataIntegrity();
+        break;
+        
+      case 'SYNC_DATA':
+        console.log("Sincronizzazione dati richiesta");
+        saveAllSettingsImmediate();
+        break;
+        
+      default:
+        console.log('Messaggio Service Worker non gestito:', event.data.type);
+    }
+  };
+
+  // NUOVO: Verifica l'integrità dei dati
+  const verifyDataIntegrity = async () => {
+    try {
+      console.log("Verifica integrità dati...");
+      
+      const hasTransactions = transactions && transactions.length > 0;
+      const hasSettings = userSettings && userSettings.setupCompleted;
+      const hasFixedExpenses = fixedExpenses && fixedExpenses.length > 0;
+      
+      // Se non abbiamo dati critici, prova a ripristinare da backup
+      if (!hasSettings || (!hasTransactions && !hasFixedExpenses && monthlyIncome === 0)) {
+        console.log("Possibile perdita di dati rilevata, tentativo di ripristino...");
+        
+        const backupInfo = getBackupInfo();
+        if (backupInfo.exists && backupInfo.totalItems > 0) {
+          console.log("Backup trovato:", backupInfo);
+          
+          // Chiedi all'utente se vuole ripristinare (o fallo automaticamente)
+          const shouldRestore = window.confirm(
+            `Rilevata possibile perdita di dati. Trovato backup del ${new Date(backupInfo.timestamp).toLocaleString()} con ${backupInfo.totalItems} elementi. Vuoi ripristinare?`
+          );
+          
+          if (shouldRestore) {
+            const restored = await restoreFromBackup();
+            if (restored) {
+              console.log("Dati ripristinati da backup");
+              // Ricarica i dati
+              await loadDataWithFallback();
+              return true;
+            }
           }
         }
-      } catch (e) {
-        console.error("Errore nel caricamento da localStorage:", e);
       }
+      
+      return false;
+    } catch (error) {
+      console.error("Errore nella verifica integrità:", error);
+      return false;
     }
-    return false; // Nessun dato caricato
   };
 
-  // Funzione ottimizzata per salvare subito tutte le impostazioni
+  // NUOVO: Registrazione listener per Service Worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator && isPWA()) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+      
+      // Registra anche eventi di visibilità per PWA
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') {
+          console.log("App in background, salvataggio dati...");
+          saveAllSettingsImmediate();
+          
+          // Notifica il service worker
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'APP_CLOSING',
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      // Cleanup
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, []);
+
+  // NUOVO: Funzione per salvare immediatamente (senza debounce)
+  const saveAllSettingsImmediate = async () => {
+    if (isLoading) return;
+    
+    try {
+      console.log("Salvataggio immediato delle impostazioni...");
+
+      const settings = {
+        id: 1,
+        userSettings,
+        monthlyIncome: Number(monthlyIncome),
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage: Number(savingsPercentage),
+        streak: Number(streak),
+        achievements
+      };
+
+      await saveSettings(settings);
+      console.log("Salvataggio immediato completato");
+      
+      // Se siamo in PWA, crea anche un backup
+      if (isPWA() && backupStatus.autoBackupEnabled) {
+        setTimeout(createAutoBackup, 1000);
+      }
+      
+    } catch (error) {
+      console.error('Errore nel salvataggio immediato:', error);
+    }
+  };
+
+  // Funzione ottimizzata per salvare subito tutte le impostazioni (con debounce)
   const saveAllSettings = async () => {
+    if (isLoading) return;
+    
     try {
       console.log("Tentativo di salvataggio impostazioni:", {
         monthlyIncome,
@@ -269,30 +397,15 @@ export const AppProvider = ({ children }) => {
         achievements
       };
 
-      // PRIMA salva in localStorage per PWA (più affidabile)
-      saveToLocalStorageBackup(settings);
-      
-      // POI prova a salvare nel database
       await saveSettings(settings);
       console.log("Impostazioni salvate con successo nel database:", settings);
       
     } catch (error) {
       console.error('Errore nel salvataggio delle impostazioni:', error);
       
-      // Se il database fallisce, assicurati che almeno localStorage funzioni
-      saveToLocalStorageBackup({
-        userSettings,
-        monthlyIncome,
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage,
-        streak,
-        achievements
-      });
-      
       // Retry migliorato per PWA
       if (isPWA()) {
-        console.log("Tentativo di recupero errore su PWA con triple retry");
+        console.log("Tentativo di recupero errore su PWA");
         
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
@@ -316,7 +429,7 @@ export const AppProvider = ({ children }) => {
           } catch (retryError) {
             console.error(`Tentativo ${attempt} fallito:`, retryError);
             if (attempt === 3) {
-              console.error("Tutti i tentativi di recupero sono falliti, ma localStorage dovrebbe funzionare");
+              console.error("Tutti i tentativi di recupero sono falliti");
             }
           }
         }
@@ -335,54 +448,22 @@ export const AppProvider = ({ children }) => {
     
     setUserSettings(newUserSettings);
     
-    // SALVA IMMEDIATAMENTE in localStorage per PWA
-    if (isPWA()) {
-      try {
-        localStorage.setItem('budget-setup-completed', 'true');
-        saveToLocalStorageBackup({
-          userSettings: newUserSettings,
-          monthlyIncome,
-          lastPaydayDate,
-          nextPaydayDate,
-          savingsPercentage,
-          streak,
-          achievements
-        });
-        console.log("Setup completion salvato immediatamente in localStorage");
-      } catch (e) {
-        console.error("Errore nel salvataggio immediato localStorage:", e);
-      }
-    }
-    
-    // Poi salva anche nel database
+    // Salva immediatamente senza debounce
     setTimeout(() => {
-      saveAllSettings();
+      saveAllSettingsImmediate();
       
-      // Su PWA potrebbe essere necessario un secondo tentativo
+      // Crea backup dopo il setup
       if (isPWA()) {
-        setTimeout(() => {
-          console.log("Secondo tentativo di salvataggio setup in PWA");
-          saveAllSettings();
-        }, 1500);
+        setTimeout(createAutoBackup, 2000);
       }
-    }, 200);
+    }, 500);
   };
 
   // Funzione migliorata per il caricamento con fallback su localStorage
   const loadDataWithFallback = async () => {
     try {
       setIsLoading(true);
-      
-      // Per PWA, prova PRIMA localStorage
-      if (isPWA()) {
-        console.log("PWA rilevata, controllo localStorage prima del database...");
-        
-        const loadedFromLocalStorage = loadFromLocalStorageBackup();
-        if (loadedFromLocalStorage) {
-          console.log("Dati caricati con successo da localStorage, continuo con il resto");
-          // Continua con il caricamento del database ma i dati critici sono già caricati
-        }
-      }
+      console.log("=== INIZIO CARICAMENTO DATI ===");
       
       // Inizializza il database
       await initDB();
@@ -392,60 +473,12 @@ export const AppProvider = ({ children }) => {
         await new Promise(resolve => setTimeout(resolve, 800));
       }
       
-      // Carica le impostazioni dal database (se non già caricate da localStorage)
+      // Carica le impostazioni dal database
       let settingsData = await getSettings();
       console.log("Impostazioni caricate dal database:", settingsData);
       
-      // Se non abbiamo dati dal database E non li abbiamo già da localStorage
-      if ((!settingsData || settingsData.length === 0) && isPWA()) {
-        console.log("Nessun dato nel database, controllo backup localStorage...");
-        
-        // Se non abbiamo già caricato da localStorage, proviamo ora
-        const setupCompleted = localStorage.getItem('budget-setup-completed');
-        if (setupCompleted === 'true') {
-          try {
-            const fullBackup = localStorage.getItem('budget-app-full-backup');
-            if (fullBackup) {
-              const backupData = JSON.parse(fullBackup);
-              console.log("Backup trovato in localStorage:", backupData);
-              
-              // Se non abbiamo già impostato questi valori, fallo ora
-              if (userSettings.setupCompleted !== true) {
-                setUserSettings(backupData.userSettings || userSettings);
-                setMonthlyIncome(ensureNumber(backupData.monthlyIncome, 0));
-                setLastPaydayDate(backupData.lastPaydayDate || '');
-                setNextPaydayDate(backupData.nextPaydayDate || '');
-                setSavingsPercentage(ensureNumber(backupData.savingsPercentage, 10));
-              }
-              
-              // Salva nel database per il futuro
-              const settingsToSave = {
-                id: 1,
-                userSettings: backupData.userSettings || userSettings,
-                monthlyIncome: Number(backupData.monthlyIncome || 0),
-                lastPaydayDate: backupData.lastPaydayDate || '',
-                nextPaydayDate: backupData.nextPaydayDate || '',
-                savingsPercentage: Number(backupData.savingsPercentage || 10),
-                streak: Number(backupData.streak || 0),
-                achievements: backupData.achievements || []
-              };
-              
-              try {
-                await saveSettings(settingsToSave);
-                console.log("Dati ripristinati dal backup e salvati nel database");
-                settingsData = [settingsToSave];
-              } catch (saveError) {
-                console.error("Errore nel salvataggio nel database, ma localStorage funziona:", saveError);
-              }
-            }
-          } catch (e) {
-            console.error("Errore nel ripristino dal backup localStorage:", e);
-          }
-        }
-      }
-      
-      // Processa i dati caricati (dal database o da localStorage)
-      if (settingsData && settingsData.length > 0 && userSettings.setupCompleted !== true) {
+      // Processa i dati caricati
+      if (settingsData && settingsData.length > 0) {
         const settings = settingsData[0];
         
         setUserSettings(settings.userSettings || userSettings);
@@ -486,14 +519,19 @@ export const AppProvider = ({ children }) => {
           amount: ensureNumber(transaction.amount, 0)
         }));
         setTransactions(processedTransactions);
+        console.log(`Caricate ${processedTransactions.length} transazioni`);
       }
       
       if (fixedExpensesData) {
-        setFixedExpenses(ensureNumberInExpenses(fixedExpensesData));
+        const processedExpenses = ensureNumberInExpenses(fixedExpensesData);
+        setFixedExpenses(processedExpenses);
+        console.log(`Caricate ${processedExpenses.length} spese fisse`);
       }
       
       if (futureExpensesData) {
-        setFutureExpenses(ensureNumberInExpenses(futureExpensesData));
+        const processedFutureExpenses = ensureNumberInExpenses(futureExpensesData);
+        setFutureExpenses(processedFutureExpenses);
+        console.log(`Caricate ${processedFutureExpenses.length} spese future`);
       }
       
       if (savingsData) {
@@ -508,27 +546,26 @@ export const AppProvider = ({ children }) => {
           const lastSavingsEntry = processedSavings[processedSavings.length - 1];
           setTotalSavings(ensureNumber(lastSavingsEntry.total, 0));
         }
+        console.log(`Caricata cronologia risparmi con ${processedSavings.length} voci`);
+      }
+      
+      // Aggiorna info backup
+      const backupInfo = getBackupInfo();
+      if (backupInfo.exists) {
+        setBackupStatus(prev => ({
+          ...prev,
+          lastBackup: backupInfo.timestamp
+        }));
       }
       
       setIsLoading(false);
-      console.log("Caricamento dati completato con successo");
+      console.log("=== CARICAMENTO DATI COMPLETATO ===");
+      
+      // Verifica integrità dopo il caricamento
+      setTimeout(verifyDataIntegrity, 2000);
       
     } catch (error) {
       console.error('Errore nel caricamento dei dati:', error);
-      
-      // Fallback finale per PWA - usa solo localStorage
-      if (isPWA()) {
-        console.log("Tentativo di fallback finale per PWA usando solo localStorage");
-        try {
-          const loadedFromFallback = loadFromLocalStorageBackup();
-          if (!loadedFromFallback) {
-            console.log("Nessun backup localStorage trovato, setup necessario");
-          }
-        } catch (e) {
-          console.error("Fallback finale fallito completamente:", e);
-        }
-      }
-      
       setIsLoading(false);
     }
   };
@@ -541,8 +578,8 @@ export const AppProvider = ({ children }) => {
   // Registra la funzione di salvataggio globale per PWA
   useEffect(() => {
     if (typeof window !== 'undefined' && window.registerGlobalSaveFunction) {
-      window.registerGlobalSaveFunction(saveAllSettings);
-      console.log("Funzione di salvataggio registrata per PWA");
+      window.registerGlobalSaveFunction(saveAllSettingsImmediate);
+      console.log("Funzione di salvataggio immediato registrata per PWA");
     }
   }, []);
   
@@ -566,7 +603,7 @@ export const AppProvider = ({ children }) => {
     const newTimeout = setTimeout(() => {
       console.log("Esecuzione salvataggio dopo debounce...");
       saveAllSettings();
-    }, 1000); // Aspetta 1 secondo
+    }, 1000);
     
     setSaveTimeout(newTimeout);
     
@@ -585,21 +622,29 @@ export const AppProvider = ({ children }) => {
     }
   }, [userSettings.themeId, isLoading]);
 
-  // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET
+  // NUOVO: Backup automatico periodico
+  useEffect(() => {
+    if (isPWA() && backupStatus.autoBackupEnabled && !isLoading) {
+      const backupInterval = setInterval(() => {
+        createAutoBackup();
+      }, 15 * 60 * 1000); // Ogni 15 minuti
+      
+      return () => clearInterval(backupInterval);
+    }
+  }, [isPWA(), backupStatus.autoBackupEnabled, isLoading]);
+
+  // FUNZIONI IMPORTANTI PER IL CALCOLO DEL BUDGET (invariate per brevità)
   const getDaysUntilPayday = () => {
-    if (!nextPaydayDate) return 30; // Valore di default se non esiste una data
+    if (!nextPaydayDate) return 30;
     
-    // Ottieni la data corrente e quella del prossimo pagamento
     const today = new Date();
-    today.setHours(12, 0, 0, 0); // Mezzogiorno per evitare problemi di fuso orario
+    today.setHours(12, 0, 0, 0);
     
     const payArray = nextPaydayDate.split('-').map(Number);
     const nextPayday = new Date(payArray[0], payArray[1]-1, payArray[2], 12, 0, 0);
     
-    // Se oggi è uguale o successivo al nextPayday, restituisci 1
     if (today >= nextPayday) return 1;
     
-    // Calcolo esplicito dei giorni con un ciclo
     let currentDate = new Date(today);
     let diffDays = 0;
     
@@ -611,7 +656,6 @@ export const AppProvider = ({ children }) => {
     return diffDays;
   };
 
-  // Calcola il totale giornaliero delle spese future da sottrarre
   const getDailyFutureExpenses = () => {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
@@ -625,9 +669,7 @@ export const AppProvider = ({ children }) => {
       const dueArray = expense.dueDate.split('-').map(Number);
       const dueDate = new Date(dueArray[0], dueArray[1]-1, dueArray[2], 12, 0, 0);
       
-      // Se la scadenza è tra oggi e il prossimo pagamento
       if (dueDate >= today && dueDate <= nextPayday) {
-        // Calcola quanti giorni mancano alla scadenza
         let currentDate = new Date(today);
         let daysUntilDue = 0;
         
@@ -636,10 +678,7 @@ export const AppProvider = ({ children }) => {
           currentDate.setDate(currentDate.getDate() + 1);
         }
         
-        // Minimo 1 giorno per evitare divisioni per zero
         daysUntilDue = Math.max(1, daysUntilDue);
-        
-        // Dividi l'importo per i giorni rimanenti
         const dailyAmount = ensureNumber(expense.amount, 0) / daysUntilDue;
         
         return total + dailyAmount;
@@ -650,34 +689,13 @@ export const AppProvider = ({ children }) => {
   };
 
   const calculateDailyBudget = () => {
-    // Forza la conversione esplicita di tutti i numeri
     const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + ensureNumber(expense.amount, 0), 0);
     const savingsAmount = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
-    
-    // Calcola i giorni rimanenti fino al prossimo pagamento
     const daysUntilNextPayday = getDaysUntilPayday();
-    
-    // Budget totale disponibile per il periodo rimanente
     const totalBudget = ensureNumber(monthlyIncome, 0) - totalFixedExpenses - savingsAmount;
-    
-    // Budget giornaliero
     const dailyBudget = totalBudget / daysUntilNextPayday;
-    
-    // Sottrai le spese future giornaliere
     const dailyFutureExpenses = getDailyFutureExpenses();
     const finalBudget = dailyBudget - dailyFutureExpenses;
-    
-    console.log('Calcolo budget: ', {
-      monthlyIncome: ensureNumber(monthlyIncome, 0),
-      savingsPercentage: ensureNumber(savingsPercentage, 0),
-      totalFixedExpenses,
-      savingsAmount,
-      daysUntilNextPayday,
-      totalBudget,
-      dailyBudget,
-      dailyFutureExpenses,
-      finalBudget
-    });
     
     return finalBudget > 0 ? finalBudget : 0;
   };
@@ -703,29 +721,10 @@ export const AppProvider = ({ children }) => {
     return dailyBudget - todayExpenses + todayIncome;
   };
 
-  const getMonthlyAvailability = () => {
-    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + ensureNumber(expense.amount, 0), 0);
-    const savingsAmount = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    
-    const monthlyExpenses = transactions
-      .filter(t => {
-        const tDate = new Date(t.date);
-        return t.type === 'expense' && 
-               tDate.getMonth() === currentMonth && 
-               tDate.getFullYear() === currentYear;
-      })
-      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
-
-    return ensureNumber(monthlyIncome, 0) - totalFixedExpenses - savingsAmount - monthlyExpenses;
-  };
-
-  // Sistema automatico per aggiungere risparmi mensili
+  // Sistema automatico per aggiungere risparmi mensili (invariato)
   useEffect(() => {
     if (isLoading) return;
     
-    // Controlla se è il giorno di paga
     if (nextPaydayDate) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -733,22 +732,18 @@ export const AppProvider = ({ children }) => {
       const payday = new Date(nextPaydayDate);
       payday.setHours(0, 0, 0, 0);
       
-      // Se oggi è il giorno di paga
       if (today.getTime() === payday.getTime()) {
-        // Calcola e aggiungi automaticamente il risparmio mensile
         const monthlyAutomaticSavings = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
         if (monthlyAutomaticSavings > 0) {
           addToSavings(monthlyAutomaticSavings, new Date().toISOString());
         }
         
-        // Calcola la durata del periodo
         const startDate = new Date(lastPaydayDate);
         startDate.setHours(0, 0, 0, 0);
         
         const endDate = new Date(payday);
         endDate.setHours(0, 0, 0, 0);
         
-        // Calcolo esplicito dei giorni con un ciclo
         let currentDate = new Date(startDate);
         let diffDays = 0;
         
@@ -757,7 +752,6 @@ export const AppProvider = ({ children }) => {
           currentDate.setDate(currentDate.getDate() + 1);
         }
         
-        // Aggiungi la stessa durata al periodo attuale
         const nextNextPayday = new Date(endDate);
         nextNextPayday.setDate(nextNextPayday.getDate() + diffDays);
         
@@ -767,7 +761,7 @@ export const AppProvider = ({ children }) => {
     }
   }, [nextPaydayDate, monthlyIncome, savingsPercentage, isLoading, lastPaydayDate]);
 
-  // Metodi per le transazioni
+  // Metodi per le transazioni (con salvataggio automatico migliorato)
   const addTransaction = async (transaction) => {
     const newTransaction = {
       ...transaction,
@@ -777,18 +771,13 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      // Aggiungi la transazione al database
       await dbAddTransaction(newTransaction);
-      
-      // Aggiorna lo stato
       setTransactions(prev => [newTransaction, ...prev]);
-      
-      // Aggiorna lo streak e gli achievements
       updateStreakAndAchievements();
       
-      // Per PWA, forza salvataggio dopo aggiunta transazione
+      // Salvataggio automatico per PWA
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'aggiunta della transazione:', error);
@@ -809,31 +798,24 @@ export const AppProvider = ({ children }) => {
 
   const updateTransaction = async (id, updatedData) => {
     try {
-      // Trova la transazione corrente
       const currentTransaction = transactions.find(t => t.id === id);
-      
       if (!currentTransaction) return;
       
-      // Crea la transazione aggiornata
       const updatedTransaction = { 
         ...currentTransaction, 
         ...updatedData,
         amount: ensureNumber(updatedData.amount, currentTransaction.amount)
       };
       
-      // Aggiorna nel database
       await dbUpdateTransaction(updatedTransaction);
-      
-      // Aggiorna lo stato
       setTransactions(prev => 
         prev.map(transaction => 
           transaction.id === id ? updatedTransaction : transaction
         )
       );
       
-      // Per PWA, forza salvataggio dopo aggiornamento
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'aggiornamento della transazione:', error);
@@ -842,22 +824,18 @@ export const AppProvider = ({ children }) => {
 
   const deleteTransaction = async (id) => {
     try {
-      // Elimina dal database
       await dbDeleteTransaction(id);
-      
-      // Aggiorna lo stato
       setTransactions(prev => prev.filter(transaction => transaction.id !== id));
       
-      // Per PWA, forza salvataggio dopo eliminazione
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'eliminazione della transazione:', error);
     }
   };
 
-  // Metodi per le spese fisse
+  // Metodi per le spese fisse (con salvataggio migliorato)
   const addFixedExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -866,20 +844,15 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      // Aggiungi al database
       await dbAddFixedExpense(newExpense);
-      
-      // Aggiorna lo stato
       setFixedExpenses(prev => [...prev, newExpense]);
       
-      // Forza il salvataggio delle impostazioni aggiornate
       setTimeout(() => {
-        saveAllSettings();
-      }, isPWA() ? 800 : 200);
+        saveAllSettingsImmediate();
+      }, isPWA() ? 500 : 200);
     } catch (error) {
       console.error('Errore nell\'aggiunta della spesa fissa:', error);
       
-      // Retry per PWA
       if (isPWA()) {
         setTimeout(async () => {
           try {
@@ -887,7 +860,7 @@ export const AppProvider = ({ children }) => {
             await initDB();
             await dbAddFixedExpense(newExpense);
             setFixedExpenses(prev => [...prev, newExpense]);
-            saveAllSettings();
+            saveAllSettingsImmediate();
           } catch (e) {
             console.error("Ritentativo fallito:", e);
           }
@@ -898,22 +871,18 @@ export const AppProvider = ({ children }) => {
 
   const deleteFixedExpense = async (id) => {
     try {
-      // Elimina dal database
       await dbDeleteFixedExpense(id);
-      
-      // Aggiorna lo stato
       setFixedExpenses(prev => prev.filter(expense => expense.id !== id));
       
-      // Forza il salvataggio delle impostazioni aggiornate
       setTimeout(() => {
-        saveAllSettings();
-      }, isPWA() ? 800 : 200);
+        saveAllSettingsImmediate();
+      }, isPWA() ? 500 : 200);
     } catch (error) {
       console.error('Errore nell\'eliminazione della spesa fissa:', error);
     }
   };
 
-  // Metodi per le spese future
+  // Metodi per le spese future (con salvataggio migliorato)
   const addFutureExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -923,15 +892,11 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      // Aggiungi al database
       await dbAddFutureExpense(newExpense);
-      
-      // Aggiorna lo stato
       setFutureExpenses(prev => [...prev, newExpense]);
       
-      // Per PWA, forza salvataggio
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'aggiunta della spesa futura:', error);
@@ -940,31 +905,24 @@ export const AppProvider = ({ children }) => {
 
   const updateFutureExpense = async (id, updatedData) => {
     try {
-      // Trova la spesa corrente
       const currentExpense = futureExpenses.find(e => e.id === id);
-      
       if (!currentExpense) return;
       
-      // Crea la spesa aggiornata
       const updatedExpense = { 
         ...currentExpense, 
         ...updatedData,
         amount: ensureNumber(updatedData.amount, currentExpense.amount) 
       };
       
-      // Aggiorna nel database
       await dbUpdateFutureExpense(updatedExpense);
-      
-      // Aggiorna lo stato
       setFutureExpenses(prev => 
         prev.map(expense => 
           expense.id === id ? updatedExpense : expense
         )
       );
       
-      // Per PWA, forza salvataggio
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'aggiornamento della spesa futura:', error);
@@ -973,22 +931,18 @@ export const AppProvider = ({ children }) => {
 
   const deleteFutureExpense = async (id) => {
     try {
-      // Elimina dal database
       await dbDeleteFutureExpense(id);
-      
-      // Aggiorna lo stato
       setFutureExpenses(prev => prev.filter(expense => expense.id !== id));
       
-      // Per PWA, forza salvataggio
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'eliminazione della spesa futura:', error);
     }
   };
 
-  // Funzione per aggiungere ai risparmi
+  // Funzione per aggiungere ai risparmi (con salvataggio migliorato)
   const addToSavings = async (amount, date = new Date().toISOString()) => {
     const parsedAmount = ensureNumber(amount, 0);
     const newTotal = ensureNumber(totalSavings, 0) + parsedAmount;
@@ -1001,26 +955,20 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      // Aggiungi al database
       await dbAddSavingsEntry(newEntry);
-      
-      // Aggiorna lo stato
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
-      
-      // Aggiungi un achievement se il risparmio totale supera una soglia
       checkSavingsAchievements(newTotal);
       
-      // Per PWA, forza salvataggio
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nell\'aggiunta del risparmio:', error);
     }
   };
 
-  // Funzione per prelevare dai risparmi
+  // Funzione per prelevare dai risparmi (con salvataggio migliorato)
   const withdrawFromSavings = async (amount, date = new Date().toISOString()) => {
     const parsedAmount = ensureNumber(amount, 0);
     const newTotal = ensureNumber(totalSavings, 0) - parsedAmount;
@@ -1033,44 +981,36 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      // Aggiungi al database
       await dbAddSavingsEntry(newEntry);
-      
-      // Aggiorna lo stato
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
       
-      // Per PWA, forza salvataggio
       if (isPWA()) {
-        setTimeout(saveAllSettings, 500);
+        setTimeout(saveAllSettingsImmediate, 300);
       }
     } catch (error) {
       console.error('Errore nel prelievo dai risparmi:', error);
     }
   };
 
-  // Funzione per verificare e aggiornare streak e achievement
+  // Funzioni per streak e achievement (invariate)
   const updateStreakAndAchievements = () => {
     const surplus = getBudgetSurplus();
     
     if (surplus >= 0) {
-      // Incrementa streak
       const newStreak = ensureNumber(streak, 0) + 1;
       setStreak(newStreak);
       
-      // Aggiungi achievement per streak milestone
       if (newStreak === 7) {
         addAchievement('Streak di 7 giorni', 'Hai mantenuto il budget per una settimana!');
       } else if (newStreak === 30) {
         addAchievement('Streak di 30 giorni', 'Hai mantenuto il budget per un mese intero!');
       }
     } else {
-      // Resetta streak
       setStreak(0);
     }
   };
 
-  // Verifica achievement per risparmi
   const checkSavingsAchievements = (total) => {
     const parsedTotal = ensureNumber(total, 0);
     if (parsedTotal >= 100 && !hasAchievement('Primo traguardo di risparmio')) {
@@ -1082,12 +1022,10 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Verifica se un achievement esiste già
   const hasAchievement = (title) => {
     return achievements.some(a => a.title === title);
   };
 
-  // Aggiungi un nuovo achievement
   const addAchievement = (title, description) => {
     const newAchievement = {
       id: Date.now(),
@@ -1100,7 +1038,7 @@ export const AppProvider = ({ children }) => {
     setAchievements(prev => [...prev, newAchievement]);
   };
 
-  // Statistiche
+  // Statistiche (invariate)
   const getMonthlyStats = () => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -1163,10 +1101,20 @@ export const AppProvider = ({ children }) => {
     };
   };
 
-  // Funzione per resettare completamente l'app
+  // Funzione per resettare completamente l'app (migliorata)
   const resetApp = async () => {
     try {
       setIsLoading(true);
+      
+      // Prima crea un backup finale se possibile
+      if (isPWA()) {
+        try {
+          await createAutoBackup();
+          console.log("Backup finale creato prima del reset");
+        } catch (e) {
+          console.warn("Impossibile creare backup finale:", e);
+        }
+      }
       
       // Cancella il database
       await clearDatabase();
@@ -1191,7 +1139,14 @@ export const AppProvider = ({ children }) => {
       // Resetta le impostazioni utente ma mantiene il tema e la lingua
       setUserSettings({
         ...userSettings,
-        setupCompleted: false // Segna la configurazione come non completata
+        setupCompleted: false
+      });
+      
+      // Resetta anche il backup status
+      setBackupStatus({
+        lastBackup: null,
+        autoBackupEnabled: true,
+        backupInProgress: false
       });
       
       // Salva le impostazioni vuote
@@ -1208,16 +1163,6 @@ export const AppProvider = ({ children }) => {
         streak: 0,
         achievements: []
       });
-      
-      // In PWA, cancella anche localStorage
-      if (isPWA()) {
-        localStorage.removeItem('budget-app-saved');
-        localStorage.removeItem('budget-app-income');
-        localStorage.removeItem('budget-app-savings-percentage');
-        localStorage.removeItem('budget-app-backup');
-        localStorage.removeItem('budget-setup-completed');
-        localStorage.removeItem('budget-app-full-backup');
-      }
       
       setIsLoading(false);
       
@@ -1251,8 +1196,15 @@ export const AppProvider = ({ children }) => {
       userSettings, setUserSettings,
       updateThemeColors,
       activeTheme,
-      completeSetup, // Funzione per completare il setup iniziale
-      saveAllSettings, // Esposizione della funzione per salvare manualmente
+      completeSetup,
+      saveAllSettings,
+      saveAllSettingsImmediate, // NUOVO: Salvataggio immediato
+      
+      // NUOVO: Stati e funzioni per backup
+      backupStatus, 
+      setBackupStatus,
+      createAutoBackup,
+      verifyDataIntegrity,
 
       // FUNZIONI IMPORTANTI
       addTransaction, 
@@ -1268,13 +1220,12 @@ export const AppProvider = ({ children }) => {
       getTodayIncome,
       getBudgetSurplus,
       getDaysUntilPayday,
-      getMonthlyAvailability,
       getDailyFutureExpenses,
       getMonthlyStats,
       getWeeklyComparison,
       addToSavings,
       withdrawFromSavings,
-      resetApp // Nuova funzione di reset
+      resetApp
     }}>
       {children}
     </AppContext.Provider>
