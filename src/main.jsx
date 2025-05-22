@@ -1,43 +1,25 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import { initDB } from './services/db';
 
-// Rimuovo completamente il service worker per evitare errori 404
-console.log("App Budget - Versione semplificata senza Service Worker");
+// Service Worker per PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('✅ Service Worker registrato');
+    } catch (error) {
+      console.log('❌ Service Worker fallito:', error);
+    }
+  });
+}
 
-// Inizializzazione semplice dell'app
-const initApp = async () => {
-  console.log("Inizializzazione app...");
-  
-  try {
-    // Inizializza il database
-    await initDB();
-    console.log("Database inizializzato");
-  } catch (err) {
-    console.error("Errore inizializzazione database:", err);
-  }
-  
-  // Renderizza l'app
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-  
-  console.log("App renderizzata");
-};
+// Renderizza l'app
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
 
-// Avvia l'app
-initApp().catch((error) => {
-  console.error("Errore durante l'inizializzazione:", error);
-  
-  // Fallback: renderizza comunque l'app
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-});
+console.log("✅ Budget App avviata");
