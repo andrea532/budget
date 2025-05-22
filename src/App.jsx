@@ -13,7 +13,7 @@ import StatsPage from './components/StatsPage';
 import SettingsPage from './components/SettingsPage';
 import IncomeSetup from './components/IncomeSetup';
 import ExpensesSetup from './components/ExpensesSetup';
-import SavingsSetup from './components/SavingsSetup';
+import SavingsSetup from './components/SavingsSetup'; // Import corretto del componente SavingsSetup
 import Navigation from './components/Navigation';
 
 // Definizione delle animazioni per le transizioni tra pagine
@@ -60,7 +60,7 @@ const AppContent = () => {
       case 'expenses':
         return <ExpensesSetup />;
       case 'savings':
-        return <SavingsSetup />;
+        return <SavingsSetup />; // Componente corretto per la gestione dei risparmi
       default:
         return <Dashboard />;
     }
