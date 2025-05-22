@@ -1,14 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PiggyBank, TrendingUp, TrendingDown, Plus, Minus, Info, Check } from 'lucide-react';
+import { PiggyBank, TrendingUp, Plus, Minus, Info, Check } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
-
-// Verifica se siamo in PWA
-const isPWA = () => {
-  return window.matchMedia('(display-mode: standalone)').matches || 
-         window.navigator.standalone || // Safari iOS
-         document.referrer.includes('android-app://');
-};
 
 const SavingsSetup = ({ isInitialSetup, onComplete }) => {
   const {
@@ -24,13 +17,8 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     fixedExpenses,
   } = useContext(AppContext);
 
-  // CORREZIONE: Gestione migliorata dello stato locale
-  const [localSavingsPercentage, setLocalSavingsPercentage] = useState(() => {
-    const contextValue = typeof savingsPercentage === 'number' ? savingsPercentage : 10;
-    console.log("SavingsSetup: Inizializzazione con valore:", contextValue);
-    return contextValue;
-  });
-  
+  // Stati locali
+  const [localSavingsPercentage, setLocalSavingsPercentage] = useState(savingsPercentage || 10);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [savingsAmount, setSavingsAmount] = useState('');
@@ -38,25 +26,12 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // CORREZIONE: Sincronizzazione migliorata con il context
+  // Sincronizza con il context
   useEffect(() => {
-    console.log("SavingsSetup: savingsPercentage dal context cambiato:", savingsPercentage);
-    if (typeof savingsPercentage === 'number' && !isSaving) {
-      console.log("SavingsSetup: Aggiornamento localSavingsPercentage a:", savingsPercentage);
+    if (typeof savingsPercentage === 'number') {
       setLocalSavingsPercentage(savingsPercentage);
     }
-  }, [savingsPercentage, isSaving]);
-
-  // CORREZIONE: Debug logging migliorato
-  useEffect(() => {
-    console.log("SavingsSetup: Stato corrente", {
-      savingsPercentage: savingsPercentage,
-      localSavingsPercentage: localSavingsPercentage,
-      monthlyIncome: monthlyIncome,
-      typeof_savingsPercentage: typeof savingsPercentage,
-      typeof_localSavingsPercentage: typeof localSavingsPercentage
-    });
-  }, [savingsPercentage, localSavingsPercentage, monthlyIncome]);
+  }, [savingsPercentage]);
 
   // Animazioni
   const containerVariants = {
@@ -99,71 +74,24 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
     return income - totalFixedExpenses - monthlySavings;
   };
 
-  // CORREZIONE: Gestione del salvataggio completamente rivista
+  // SALVATAGGIO SEMPLIFICATO
   const handleSave = async () => {
-    if (isSaving) {
-      console.log("SavingsSetup: Salvataggio già in corso, ignoro");
-      return;
-    }
+    if (isSaving) return;
 
     try {
       setIsSaving(true);
-      console.log("=== SavingsSetup: INIZIO SALVATAGGIO ===");
-      console.log("SavingsSetup: Salvando localSavingsPercentage:", localSavingsPercentage);
-      console.log("SavingsSetup: Tipo di localSavingsPercentage:", typeof localSavingsPercentage);
+      console.log("💾 Salvando impostazioni risparmio:", localSavingsPercentage);
       
-      // STEP 1: Aggiorna immediatamente il context
-      console.log("SavingsSetup: Step 1 - Aggiornamento context");
+      // Aggiorna il context immediatamente
       setSavingsPercentage(localSavingsPercentage);
       
-      // STEP 2: Attendi un momento per assicurarsi che il context sia aggiornato
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // STEP 3: Forza il salvataggio immediato
-      console.log("SavingsSetup: Step 3 - Salvataggio immediato");
+      // Salva immediatamente
       await saveAllSettingsImmediate();
       
-      // STEP 4: Per PWA, effettua controlli aggiuntivi
-      if (isPWA()) {
-        console.log("SavingsSetup: Step 4 - Controlli aggiuntivi PWA");
-        
-        // Secondo salvataggio dopo un breve ritardo
-        setTimeout(async () => {
-          try {
-            console.log("SavingsSetup: Secondo salvataggio PWA");
-            await saveAllSettingsImmediate();
-            
-            // Backup in localStorage per sicurezza
-            const backupData = {
-              savingsPercentage: localSavingsPercentage,
-              timestamp: new Date().toISOString()
-            };
-            localStorage.setItem('savings-backup', JSON.stringify(backupData));
-            console.log("SavingsSetup: Backup localStorage creato");
-            
-          } catch (error) {
-            console.error("SavingsSetup: Errore nel secondo salvataggio PWA:", error);
-          }
-        }, 1000);
-        
-        // Terzo salvataggio dopo 3 secondi
-        setTimeout(async () => {
-          try {
-            console.log("SavingsSetup: Terzo salvataggio PWA (verifica)");
-            await saveAllSettingsImmediate();
-          } catch (error) {
-            console.error("SavingsSetup: Errore nel terzo salvataggio PWA:", error);
-          }
-        }, 3000);
-      }
-
-      // STEP 5: Mostra animazione di successo
-      console.log("SavingsSetup: Step 5 - Mostra successo");
+      // Mostra successo
       setShowSuccess(true);
-
-      // STEP 6: Completa il processo
+      
       setTimeout(() => {
-        console.log("SavingsSetup: Step 6 - Completamento");
         setShowSuccess(false);
         
         if (isInitialSetup && onComplete) {
@@ -173,15 +101,13 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
         }
         
         setIsSaving(false);
-      }, 1500);
+      }, 1000);
 
-      console.log("=== SavingsSetup: SALVATAGGIO COMPLETATO ===");
+      console.log("✅ Impostazioni risparmio salvate");
       
     } catch (error) {
-      console.error("SavingsSetup: Errore durante il salvataggio:", error);
+      console.error("❌ Errore durante il salvataggio:", error);
       setIsSaving(false);
-      
-      // Mostra errore all'utente
       alert("Errore nel salvataggio. Riprova.");
     }
   };
@@ -199,18 +125,17 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
 
     setSavingsAmount('');
     setShowSavingsForm(false);
+    console.log(`✅ ${savingsAction === 'add' ? 'Aggiunto' : 'Prelevato'} €${amount} dai risparmi`);
   };
 
-  // CORREZIONE: Gestione del cambiamento dello slider migliorata
+  // Gestione slider
   const handleSliderChange = (newValue) => {
     const numericValue = parseInt(newValue);
-    console.log("SavingsSetup: Slider cambiato a:", numericValue);
     setLocalSavingsPercentage(numericValue);
   };
 
-  // CORREZIONE: Gestione del click sui preset migliorata
+  // Gestione preset
   const handlePresetClick = (percentage) => {
-    console.log("SavingsSetup: Preset cliccato:", percentage);
     setLocalSavingsPercentage(percentage);
   };
 
@@ -293,7 +218,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
         }}
       >
-        {/* Icon and Current Savings */}
+        {/* Icon */}
         <motion.div
           variants={itemVariants}
           style={{
@@ -326,7 +251,7 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
           </motion.div>
         </motion.div>
 
-        {/* Current Savings Display */}
+        {/* Current Savings Display - solo se non è setup iniziale */}
         {!isInitialSetup && (
           <motion.div
             variants={itemVariants}
@@ -528,27 +453,6 @@ const SavingsSetup = ({ isInitialSetup, onComplete }) => {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Debug info per sviluppo */}
-        {process.env.NODE_ENV === 'development' && (
-          <motion.div
-            variants={itemVariants}
-            style={{
-              padding: '12px',
-              borderRadius: '8px',
-              backgroundColor: `${theme.warning}15`,
-              marginBottom: '16px',
-              fontSize: '12px',
-              color: theme.text,
-            }}
-          >
-            <strong>Debug:</strong><br/>
-            Context: {savingsPercentage}% (tipo: {typeof savingsPercentage})<br/>
-            Local: {localSavingsPercentage}% (tipo: {typeof localSavingsPercentage})<br/>
-            Saving: {isSaving ? 'Yes' : 'No'}<br/>
-            PWA: {isPWA() ? 'Yes' : 'No'}
-          </motion.div>
-        )}
 
         {/* Percentage Selection */}
         <motion.div variants={itemVariants} style={{ marginBottom: '24px' }}>
