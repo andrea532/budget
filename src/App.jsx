@@ -2,7 +2,8 @@ import { useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppContext, AppProvider } from './context/AppContext';
 import LoadingScreen from './components/LoadingScreen';
-import InitialSetupWizard from './components/InitialSetupWizard'; // Componente guidata di configurazione iniziale
+import InitialSetupWizard from './components/InitialSetupWizard';
+import StorageService from './components/StorageService'; // Nuovo componente
 import './styles/globals.css';
 
 // Import di tutti i componenti
@@ -13,7 +14,7 @@ import StatsPage from './components/StatsPage';
 import SettingsPage from './components/SettingsPage';
 import IncomeSetup from './components/IncomeSetup';
 import ExpensesSetup from './components/ExpensesSetup';
-import SavingsSetup from './components/SavingsSetup'; // Import corretto del componente SavingsSetup
+import SavingsSetup from './components/SavingsSetup';
 import Navigation from './components/Navigation';
 
 // Definizione delle animazioni per le transizioni tra pagine
@@ -39,7 +40,12 @@ const AppContent = () => {
 
   // Se l'utente non ha completato la configurazione iniziale, mostra la procedura guidata
   if (!userSettings.setupCompleted) {
-    return <InitialSetupWizard />;
+    return (
+      <>
+        <StorageService /> {/* Aggiungi il servizio di storage */}
+        <InitialSetupWizard />
+      </>
+    );
   }
 
   // Funzione per renderizzare la vista corrente
@@ -60,7 +66,7 @@ const AppContent = () => {
       case 'expenses':
         return <ExpensesSetup />;
       case 'savings':
-        return <SavingsSetup />; // Componente corretto per la gestione dei risparmi
+        return <SavingsSetup />;
       default:
         return <Dashboard />;
     }
@@ -76,6 +82,9 @@ const AppContent = () => {
         overflow: 'hidden',
       }}
     >
+      {/* Componente di servizio per la gestione del localStorage e feedback di errore */}
+      <StorageService />
+      
       {/* Contenitore principale con animazioni per le transizioni tra pagine */}
       <AnimatePresence mode="wait">
         <motion.div
