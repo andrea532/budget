@@ -20,8 +20,11 @@ import {
   createManualBackup,
   getBackupInfo,
   verifyDataIntegrity,
-  isPWA
+  isPWA,
+  hasLocalStorage
 } from '../services/db';
+
+import { emitStorageError, emitStorageSuccess } from '../components/StorageService';
 
 export const AppContext = createContext(null);
 
@@ -90,6 +93,15 @@ export const AppProvider = ({ children }) => {
     lastBackup: null,
     autoBackupEnabled: true
   });
+  
+  // NUOVO: Stato per la gestione dei salvataggi
+  const [savingState, setSavingState] = useState({
+    isSaving: false,
+    lastSaveAttempt: null,
+    lastSaveSuccess: null,
+    saveErrors: [],
+    retryCount: 0
+  });
 
   // Categorie
   const [categories] = useState([
@@ -135,11 +147,22 @@ export const AppProvider = ({ children }) => {
     return Number(value);
   };
 
-  // SALVATAGGIO IMMEDIATO E SEMPLICE
+  // MIGLIORATO: SALVATAGGIO CON RETRY E FEEDBACK
   const saveAllSettings = async () => {
     if (isLoading) return;
     
+    // Imposta lo stato di salvataggio
+    setSavingState(prev => ({
+      ...prev,
+      isSaving: true,
+      lastSaveAttempt: new Date().toISOString()
+    }));
+    
     try {
+      if (!hasLocalStorage) {
+        throw new Error("localStorage non disponibile");
+      }
+      
       const settings = {
         id: 1,
         userSettings,
@@ -152,8 +175,24 @@ export const AppProvider = ({ children }) => {
         backupStatus
       };
 
-      await saveSettings(settings);
-      console.log("✅ Impostazioni salvate immediatamente");
+      // Esegui il salvataggio
+      const saveResult = await saveSettings(settings);
+      
+      if (!saveResult) {
+        throw new Error("Errore durante il salvataggio delle impostazioni");
+      }
+      
+      // Aggiorna lo stato di salvataggio
+      setSavingState(prev => ({
+        ...prev,
+        isSaving: false,
+        lastSaveSuccess: new Date().toISOString(),
+        retryCount: 0, // Reset del contatore dei tentativi
+        saveErrors: [] // Reset degli errori
+      }));
+      
+      console.log("✅ Impostazioni salvate correttamente");
+      emitStorageSuccess("Dati salvati con successo");
       
       // Backup automatico se attivo
       if (backupStatus.autoBackupEnabled && isPWA()) {
@@ -162,11 +201,54 @@ export const AppProvider = ({ children }) => {
       
     } catch (error) {
       console.error('❌ Errore salvataggio:', error);
+      
+      // Aggiorna lo stato di salvataggio con l'errore
+      setSavingState(prev => {
+        const newRetryCount = prev.retryCount + 1;
+        const newErrors = [...prev.saveErrors, { 
+          timestamp: new Date().toISOString(), 
+          message: error.message 
+        }];
+        
+        // Limita il numero di errori memorizzati
+        if (newErrors.length > 5) {
+          newErrors.shift();
+        }
+        
+        return {
+          ...prev,
+          isSaving: false,
+          retryCount: newRetryCount,
+          saveErrors: newErrors
+        };
+      });
+      
+      // Emetti l'errore per il componente StorageService
+      emitStorageError("Errore durante il salvataggio dei dati. I tuoi dati potrebbero non essere persistenti.");
+      
+      // Tentativo di riprovare (max 3 volte con ritardo esponenziale)
+      if (savingState.retryCount < 3) {
+        const retryDelay = Math.pow(2, savingState.retryCount) * 1000; // 1s, 2s, 4s
+        console.log(`⏱️ Riprovo salvataggio tra ${retryDelay/1000}s (tentativo ${savingState.retryCount + 1}/3)`);
+        
+        setTimeout(() => {
+          saveAllSettings();
+        }, retryDelay);
+      }
     }
   };
 
-  // Salvataggio immediato
-  const saveAllSettingsImmediate = saveAllSettings;
+  // Salvataggio immediato (versione più robusta)
+  const saveAllSettingsImmediate = async () => {
+    // Ignora se c'è già un salvataggio in corso
+    if (savingState.isSaving) {
+      console.log("⏱️ Salvataggio già in corso, richiesta ignorata");
+      return;
+    }
+    
+    // Esegui il salvataggio
+    return await saveAllSettings();
+  };
 
   // Backup automatico
   const createAutoBackup = async () => {
@@ -214,16 +296,25 @@ export const AppProvider = ({ children }) => {
       setupCompleted: true
     }));
     // Salva immediatamente
-    setTimeout(saveAllSettings, 100);
+    setTimeout(saveAllSettingsImmediate, 100);
   };
 
-  // CARICAMENTO DATI
+  // CARICAMENTO DATI MIGLIORATO
   const loadData = async () => {
     try {
       setIsLoading(true);
       console.log("🔄 Caricamento dati...");
       
-      await initDB();
+      // MIGLIORATO: Verifiche prima di inizializzare
+      if (!hasLocalStorage) {
+        console.warn("⚠️ localStorage non disponibile, l'app funzionerà solo in sessione");
+      }
+      
+      // Inizializza il DB con verifiche aggiuntive
+      const dbInitResult = await initDB();
+      if (!dbInitResult) {
+        console.warn("⚠️ Inizializzazione DB non riuscita, utilizzo fallback in memoria");
+      }
       
       // Carica impostazioni
       const settingsData = await getSettings();
@@ -242,56 +333,71 @@ export const AppProvider = ({ children }) => {
         if (settings.userSettings?.themeId) {
           updateThemeColors(settings.userSettings.themeId);
         }
+      } else {
+        console.log("🆕 Nessuna impostazione trovata, utilizzo valori predefiniti");
       }
       
-      // Carica tutti gli altri dati
-      const [transactionsData, fixedExpensesData, futureExpensesData, savingsData] = await Promise.all([
-        getTransactions(),
-        getFixedExpenses(),
-        getFutureExpenses(),
-        getSavingsHistory()
-      ]);
-      
-      if (transactionsData) {
-        setTransactions(transactionsData.map(t => ({
-          ...t,
-          amount: ensureNumber(t.amount, 0)
-        })));
-      }
-      
-      if (fixedExpensesData) {
-        setFixedExpenses(fixedExpensesData.map(e => ({
-          ...e,
-          amount: ensureNumber(e.amount, 0)
-        })));
-      }
-      
-      if (futureExpensesData) {
-        setFutureExpenses(futureExpensesData.map(e => ({
-          ...e,
-          amount: ensureNumber(e.amount, 0)
-        })));
-      }
-      
-      if (savingsData) {
-        const processedSavings = savingsData.map(entry => ({
-          ...entry,
-          amount: ensureNumber(entry.amount, 0),
-          total: ensureNumber(entry.total, 0)
-        }));
-        setSavingsHistory(processedSavings);
+      // Carica tutti gli altri dati con gestione errori migliorata
+      try {
+        const [transactionsData, fixedExpensesData, futureExpensesData, savingsData] = await Promise.all([
+          getTransactions(),
+          getFixedExpenses(),
+          getFutureExpenses(),
+          getSavingsHistory()
+        ]);
         
-        if (processedSavings.length > 0) {
-          const lastEntry = processedSavings[processedSavings.length - 1];
-          setTotalSavings(ensureNumber(lastEntry.total, 0));
+        if (transactionsData) {
+          setTransactions(transactionsData.map(t => ({
+            ...t,
+            amount: ensureNumber(t.amount, 0)
+          })));
         }
+        
+        if (fixedExpensesData) {
+          setFixedExpenses(fixedExpensesData.map(e => ({
+            ...e,
+            amount: ensureNumber(e.amount, 0)
+          })));
+        }
+        
+        if (futureExpensesData) {
+          setFutureExpenses(futureExpensesData.map(e => ({
+            ...e,
+            amount: ensureNumber(e.amount, 0)
+          })));
+        }
+        
+        if (savingsData) {
+          const processedSavings = savingsData.map(entry => ({
+            ...entry,
+            amount: ensureNumber(entry.amount, 0),
+            total: ensureNumber(entry.total, 0)
+          }));
+          setSavingsHistory(processedSavings);
+          
+          if (processedSavings.length > 0) {
+            const lastEntry = processedSavings[processedSavings.length - 1];
+            setTotalSavings(ensureNumber(lastEntry.total, 0));
+          }
+        }
+      } catch (dataError) {
+        console.error('❌ Errore caricamento dati:', dataError);
+        // Continua comunque per consentire l'uso dell'app
       }
       
       console.log("✅ Dati caricati");
       setIsLoading(false);
+      
+      // Crea un backup automatico appena i dati sono caricati (se in PWA)
+      if (isPWA() && backupStatus.autoBackupEnabled) {
+        setTimeout(createAutoBackup, 2000);
+      }
     } catch (error) {
       console.error('❌ Errore caricamento:', error);
       setIsLoading(false);
+      
+      // Segnala l'errore
+      emitStorageError("Errore di caricamento dati. L'app funzionerà con dati limitati.");
     }
   };
 
@@ -300,10 +406,15 @@ export const AppProvider = ({ children }) => {
     loadData();
   }, []);
 
-  // Salva quando cambiano le impostazioni (IMMEDIATO)
+  // Salva quando cambiano le impostazioni (RITARDATO per evitare salvataggi troppo frequenti)
   useEffect(() => {
     if (!isLoading) {
-      saveAllSettings();
+      // Usa un timer per ritardare il salvataggio di 500ms per evitare troppe scritture
+      const saveTimer = setTimeout(() => {
+        saveAllSettings();
+      }, 500);
+      
+      return () => clearTimeout(saveTimer);
     }
   }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, 
       streak, achievements, backupStatus, isLoading]);
@@ -379,7 +490,7 @@ export const AppProvider = ({ children }) => {
     return dailyBudget - todayExpenses + todayIncome;
   };
 
-  // TRANSAZIONI (con salvataggio immediato)
+  // TRANSAZIONI (con salvataggio immediato e migliorato)
   const addTransaction = async (transaction) => {
     const newTransaction = {
       ...transaction,
@@ -389,18 +500,36 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      await dbAddTransaction(newTransaction);
+      // Aggiorna lo stato locale immediatamente per UI reattiva
       setTransactions(prev => [newTransaction, ...prev]);
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbAddTransaction(newTransaction);
+      
+      if (!result) {
+        throw new Error("Errore nel salvare la transazione");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiunta
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiunta transazione:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel salvare la transazione. Ricarica l'app per verificare che sia stata salvata.");
+      
+      // Anche se fallisce il salvataggio, manteniamo la transazione nello stato locale
+      // in modo che l'utente possa vedere il cambiamento e riproveremo a salvare in seguito
+      return false;
     }
   };
 
   const updateTransaction = async (id, updatedData) => {
     try {
       const current = transactions.find(t => t.id === id);
-      if (!current) return;
+      if (!current) return false;
       
       const updated = { 
         ...current, 
@@ -408,27 +537,59 @@ export const AppProvider = ({ children }) => {
         amount: ensureNumber(updatedData.amount, current.amount)
       };
       
-      await dbUpdateTransaction(updated);
+      // Aggiorna lo stato locale immediatamente
       setTransactions(prev => 
         prev.map(t => t.id === id ? updated : t)
       );
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbUpdateTransaction(updated);
+      
+      if (!result) {
+        throw new Error("Errore nell'aggiornare la transazione");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiornamento
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiornamento transazione:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nell'aggiornare la transazione. Ricarica l'app per verificare che sia stata aggiornata.");
+      
+      return false;
     }
   };
 
   const deleteTransaction = async (id) => {
     try {
-      await dbDeleteTransaction(id);
+      // Aggiorna lo stato locale immediatamente
       setTransactions(prev => prev.filter(t => t.id !== id));
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di eliminare dal database
+      const result = await dbDeleteTransaction(id);
+      
+      if (!result) {
+        throw new Error("Errore nell'eliminare la transazione");
+      }
+      
+      // Salva tutto lo stato dopo l'eliminazione
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore eliminazione transazione:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nell'eliminare la transazione. Ricarica l'app per verificare che sia stata eliminata.");
+      
+      return false;
     }
   };
 
-  // SPESE FISSE (con salvataggio immediato)
+  // SPESE FISSE (con salvataggio immediato e migliorato)
   const addFixedExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -437,25 +598,57 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      await dbAddFixedExpense(newExpense);
+      // Aggiorna lo stato locale immediatamente
       setFixedExpenses(prev => [...prev, newExpense]);
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbAddFixedExpense(newExpense);
+      
+      if (!result) {
+        throw new Error("Errore nel salvare la spesa fissa");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiunta
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiunta spesa fissa:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel salvare la spesa fissa. Ricarica l'app per verificare che sia stata salvata.");
+      
+      return false;
     }
   };
 
   const deleteFixedExpense = async (id) => {
     try {
-      await dbDeleteFixedExpense(id);
+      // Aggiorna lo stato locale immediatamente
       setFixedExpenses(prev => prev.filter(e => e.id !== id));
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di eliminare dal database
+      const result = await dbDeleteFixedExpense(id);
+      
+      if (!result) {
+        throw new Error("Errore nell'eliminare la spesa fissa");
+      }
+      
+      // Salva tutto lo stato dopo l'eliminazione
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore eliminazione spesa fissa:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nell'eliminare la spesa fissa. Ricarica l'app per verificare che sia stata eliminata.");
+      
+      return false;
     }
   };
 
-  // SPESE FUTURE (con salvataggio immediato)
+  // SPESE FUTURE (con salvataggio immediato e migliorato)
   const addFutureExpense = async (expense) => {
     const newExpense = {
       ...expense,
@@ -464,18 +657,34 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      await dbAddFutureExpense(newExpense);
+      // Aggiorna lo stato locale immediatamente
       setFutureExpenses(prev => [...prev, newExpense]);
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbAddFutureExpense(newExpense);
+      
+      if (!result) {
+        throw new Error("Errore nel salvare la spesa futura");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiunta
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiunta spesa futura:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel salvare la spesa futura. Ricarica l'app per verificare che sia stata salvata.");
+      
+      return false;
     }
   };
 
   const updateFutureExpense = async (id, updatedData) => {
     try {
       const current = futureExpenses.find(e => e.id === id);
-      if (!current) return;
+      if (!current) return false;
       
       const updated = { 
         ...current, 
@@ -483,27 +692,59 @@ export const AppProvider = ({ children }) => {
         amount: ensureNumber(updatedData.amount, current.amount)
       };
       
-      await dbUpdateFutureExpense(updated);
+      // Aggiorna lo stato locale immediatamente
       setFutureExpenses(prev => 
         prev.map(e => e.id === id ? updated : e)
       );
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbUpdateFutureExpense(updated);
+      
+      if (!result) {
+        throw new Error("Errore nell'aggiornare la spesa futura");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiornamento
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiornamento spesa futura:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nell'aggiornare la spesa futura. Ricarica l'app per verificare che sia stata aggiornata.");
+      
+      return false;
     }
   };
 
   const deleteFutureExpense = async (id) => {
     try {
-      await dbDeleteFutureExpense(id);
+      // Aggiorna lo stato locale immediatamente
       setFutureExpenses(prev => prev.filter(e => e.id !== id));
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di eliminare dal database
+      const result = await dbDeleteFutureExpense(id);
+      
+      if (!result) {
+        throw new Error("Errore nell'eliminare la spesa futura");
+      }
+      
+      // Salva tutto lo stato dopo l'eliminazione
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore eliminazione spesa futura:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nell'eliminare la spesa futura. Ricarica l'app per verificare che sia stata eliminata.");
+      
+      return false;
     }
   };
 
-  // RISPARMI (con salvataggio immediato)
+  // RISPARMI (con salvataggio immediato e migliorato)
   const addToSavings = async (amount, date = new Date().toISOString()) => {
     const parsedAmount = ensureNumber(amount, 0);
     const newTotal = ensureNumber(totalSavings, 0) + parsedAmount;
@@ -516,12 +757,28 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      await dbAddSavingsEntry(newEntry);
+      // Aggiorna lo stato locale immediatamente
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbAddSavingsEntry(newEntry);
+      
+      if (!result) {
+        throw new Error("Errore nel salvare l'aggiunta ai risparmi");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiunta
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore aggiunta risparmio:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel salvare l'aggiunta ai risparmi. Ricarica l'app per verificare che sia stata salvata.");
+      
+      return false;
     }
   };
 
@@ -537,12 +794,28 @@ export const AppProvider = ({ children }) => {
     };
     
     try {
-      await dbAddSavingsEntry(newEntry);
+      // Aggiorna lo stato locale immediatamente
       setSavingsHistory(prev => [...prev, newEntry]);
       setTotalSavings(newTotal);
-      await saveAllSettings(); // Salva subito
+      
+      // Tenta di salvare nel database
+      const result = await dbAddSavingsEntry(newEntry);
+      
+      if (!result) {
+        throw new Error("Errore nel salvare il prelievo dai risparmi");
+      }
+      
+      // Salva tutto lo stato dopo l'aggiunta
+      await saveAllSettingsImmediate();
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore prelievo risparmio:', error);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel salvare il prelievo dai risparmi. Ricarica l'app per verificare che sia stata salvato.");
+      
+      return false;
     }
   };
 
@@ -581,12 +854,25 @@ export const AppProvider = ({ children }) => {
     return { thisWeek: thisWeekExpenses };
   };
 
-  // RESET
+  // RESET (con migliore gestione errori)
   const resetApp = async () => {
     try {
       setIsLoading(true);
       
-      await clearDatabase();
+      // Prima di cancellare, tentiamo un backup finale
+      try {
+        const backup = await createManualBackup();
+        console.log("✅ Backup finale creato prima del reset");
+      } catch (backupError) {
+        console.error("❌ Errore nel creare backup finale:", backupError);
+      }
+      
+      // Cancella il database
+      const clearResult = await clearDatabase();
+      
+      if (!clearResult) {
+        throw new Error("Errore nella cancellazione del database");
+      }
       
       // Reset tutti gli stati
       setCurrentView('dashboard');
@@ -613,10 +899,18 @@ export const AppProvider = ({ children }) => {
       setIsLoading(false);
       console.log("✅ App resettata");
       
+      // Ricarica l'app dopo un breve ritardo
       setTimeout(() => window.location.reload(), 500);
+      
+      return true;
     } catch (error) {
       console.error('❌ Errore reset:', error);
       setIsLoading(false);
+      
+      // Notifica l'errore
+      emitStorageError("Errore nel resettare l'app. Ricarica manualmente la pagina.");
+      
+      return false;
     }
   };
 
@@ -647,6 +941,7 @@ export const AppProvider = ({ children }) => {
       backupStatus, setBackupStatus,
       createAutoBackup,
       verifyDataIntegrity: verifyDataIntegrityFull,
+      savingState, // NUOVO: esporre lo stato di salvataggio
 
       // Funzioni principali
       addTransaction, 
