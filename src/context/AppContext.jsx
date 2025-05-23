@@ -1,8 +1,7 @@
 import React, { useState, createContext, useEffect } from 'react';
 import {
-  initDB,
-  saveSettings,
   getSettings,
+  saveSettings,
   getTransactions,
   addTransaction as dbAddTransaction,
   updateTransaction as dbUpdateTransaction,
@@ -15,52 +14,11 @@ import {
   updateFutureExpense as dbUpdateFutureExpense,
   deleteFutureExpense as dbDeleteFutureExpense,
   getSavingsHistory,
-  addSavingsEntry as dbAddSavingsEntry,
-  clearDatabase,
-  createManualBackup,
-  getBackupInfo,
-  verifyDataIntegrity,
-  isPWA,
-  hasLocalStorage
+  addSavingsEntry,
+  clearDatabase
 } from '../services/db';
 
-import { emitStorageError, emitStorageSuccess } from '../components/StorageService';
-
 export const AppContext = createContext(null);
-
-// Temi disponibili
-const THEMES = {
-  'blue': {
-    primary: '#4C6FFF',
-    secondary: '#2ECC71',
-    danger: '#FF5252',
-    warning: '#FFB74D',
-    background: '#ECF1FF',
-    card: '#FFFFFF',
-    darkBackground: '#1A1B21',
-    darkCard: '#25262E',
-  },
-  'forest': {
-    primary: '#2E7D32',
-    secondary: '#388E3C',
-    danger: '#D32F2F', 
-    warning: '#FFB74D',
-    background: '#EDFBEF',
-    card: '#FFFFFF',
-    darkBackground: '#1A2017',
-    darkCard: '#252E25',
-  },
-  'purple': {
-    primary: '#9C27B0',
-    secondary: '#E91E63',
-    danger: '#FF5252',
-    warning: '#FFB74D',
-    background: '#F3E5F5',
-    card: '#FFFFFF',
-    darkBackground: '#22162B',
-    darkCard: '#341C42',
-  }
-};
 
 export const AppProvider = ({ children }) => {
   // Stati principali
@@ -73,37 +31,6 @@ export const AppProvider = ({ children }) => {
   const [transactions, setTransactions] = useState([]);
   const [savingsHistory, setSavingsHistory] = useState([]);
   const [totalSavings, setTotalSavings] = useState(0);
-  const [futureExpenses, setFutureExpenses] = useState([]);
-  const [streak, setStreak] = useState(0);
-  const [achievements, setAchievements] = useState([]);
-  const [userSettings, setUserSettings] = useState({
-    notifications: true,
-    darkMode: false,
-    currency: 'EUR',
-    language: 'it',
-    themeId: 'blue',
-    setupCompleted: false,
-    autoBackupEnabled: true
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeTheme, setActiveTheme] = useState(THEMES['blue']);
-  
-  // Stati backup
-  const [backupStatus, setBackupStatus] = useState({
-    lastBackup: null,
-    autoBackupEnabled: true
-  });
-  
-  // NUOVO: Stato per la gestione dei salvataggi
-  const [savingState, setSavingState] = useState({
-    isSaving: false,
-    lastSaveAttempt: null,
-    lastSaveSuccess: null,
-    saveErrors: [],
-    retryCount: 0
-  });
-
-  // Categorie
   const [categories] = useState([
     // Categorie Spese (1-20)
     { id: 1, name: 'Cibo e Bevande', color: '#FF5252', icon: '🍕' },
@@ -139,406 +66,191 @@ export const AppProvider = ({ children }) => {
     { id: 29, name: 'Rimborso', color: '#42A5F5', icon: '♻️' },
     { id: 30, name: 'Altro Entrata', color: '#78909C', icon: '➕' }
   ]);
+  const [futureExpenses, setFutureExpenses] = useState([]);
+  const [streak, setStreak] = useState(0);
+  const [achievements, setAchievements] = useState([]);
+  const [userSettings, setUserSettings] = useState({
+    notifications: true,
+    darkMode: true, // Dark mode è ora il default
+    currency: 'EUR',
+    language: 'it'
+  });
+  const [databaseInitialized, setDatabaseInitialized] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
-  // Helper per garantire numeri
-  const ensureNumber = (value, defaultValue = 0) => {
-    if (value === 0) return 0;
-    if (!value || isNaN(Number(value))) return defaultValue;
-    return Number(value);
-  };
-
-  // MIGLIORATO: SALVATAGGIO CON RETRY E FEEDBACK
-  const saveAllSettings = async () => {
-    if (isLoading) return;
-    
-    // Imposta lo stato di salvataggio
-    setSavingState(prev => ({
-      ...prev,
-      isSaving: true,
-      lastSaveAttempt: new Date().toISOString()
-    }));
-    
-    try {
-      if (!hasLocalStorage) {
-        throw new Error("localStorage non disponibile");
-      }
-      
-      const settings = {
-        id: 1,
-        userSettings,
-        monthlyIncome: ensureNumber(monthlyIncome, 0),
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage: ensureNumber(savingsPercentage, 10),
-        streak: ensureNumber(streak, 0),
-        achievements,
-        backupStatus
-      };
-
-      // Esegui il salvataggio
-      const saveResult = await saveSettings(settings);
-      
-      if (!saveResult) {
-        throw new Error("Errore durante il salvataggio delle impostazioni");
-      }
-      
-      // Aggiorna lo stato di salvataggio
-      setSavingState(prev => ({
-        ...prev,
-        isSaving: false,
-        lastSaveSuccess: new Date().toISOString(),
-        retryCount: 0, // Reset del contatore dei tentativi
-        saveErrors: [] // Reset degli errori
-      }));
-      
-      console.log("✅ Impostazioni salvate correttamente");
-      emitStorageSuccess("Dati salvati con successo");
-      
-      // Backup automatico se attivo
-      if (backupStatus.autoBackupEnabled && isPWA()) {
-        await createAutoBackup();
-      }
-      
-    } catch (error) {
-      console.error('❌ Errore salvataggio:', error);
-      
-      // Aggiorna lo stato di salvataggio con l'errore
-      setSavingState(prev => {
-        const newRetryCount = prev.retryCount + 1;
-        const newErrors = [...prev.saveErrors, { 
-          timestamp: new Date().toISOString(), 
-          message: error.message 
-        }];
-        
-        // Limita il numero di errori memorizzati
-        if (newErrors.length > 5) {
-          newErrors.shift();
-        }
-        
-        return {
-          ...prev,
-          isSaving: false,
-          retryCount: newRetryCount,
-          saveErrors: newErrors
-        };
-      });
-      
-      // Emetti l'errore per il componente StorageService
-      emitStorageError("Errore durante il salvataggio dei dati. I tuoi dati potrebbero non essere persistenti.");
-      
-      // Tentativo di riprovare (max 3 volte con ritardo esponenziale)
-      if (savingState.retryCount < 3) {
-        const retryDelay = Math.pow(2, savingState.retryCount) * 1000; // 1s, 2s, 4s
-        console.log(`⏱️ Riprovo salvataggio tra ${retryDelay/1000}s (tentativo ${savingState.retryCount + 1}/3)`);
-        
-        setTimeout(() => {
-          saveAllSettings();
-        }, retryDelay);
-      }
-    }
-  };
-
-  // Salvataggio immediato (versione più robusta)
-  const saveAllSettingsImmediate = async () => {
-    // Ignora se c'è già un salvataggio in corso
-    if (savingState.isSaving) {
-      console.log("⏱️ Salvataggio già in corso, richiesta ignorata");
-      return;
-    }
-    
-    // Esegui il salvataggio
-    return await saveAllSettings();
-  };
-
-  // SOLUZIONE AL PROBLEMA DEL SETUP: Completa setup migliorato
-  const completeSetup = () => {
-    // Imposta il flag di setup completato
-    setUserSettings(prev => ({
-      ...prev,
-      setupCompleted: true
-    }));
-    
-    // IMPORTANTE: Salvataggio di backup DIRETTO per evitare problemi di persistenza
-    // Questo garantisce che il flag viene salvato immediatamente in localStorage
-    try {
-      // Salva il flag direttamente in localStorage come backup
-      localStorage.setItem('budget-setup-completed', 'true');
-      console.log("✅ Flag setupCompleted salvato direttamente in localStorage");
-      
-      // Salva anche le impostazioni complete immediatamente
-      const settings = {
-        id: 1,
-        userSettings: {
-          ...userSettings,
-          setupCompleted: true
-        },
-        monthlyIncome: ensureNumber(monthlyIncome, 0),
-        lastPaydayDate,
-        nextPaydayDate,
-        savingsPercentage: ensureNumber(savingsPercentage, 10),
-        streak: ensureNumber(streak, 0),
-        achievements,
-        backupStatus
-      };
-      
-      // Salva subito in localStorage (metodo diretto)
-      localStorage.setItem('budget-settings', JSON.stringify([settings]));
-      console.log("✅ Impostazioni complete salvate con setupCompleted=true");
-      
-      // Utilizza anche il metodo normale di salvataggio (con promise)
-      setTimeout(() => {
-        saveAllSettingsImmediate();
-        // Secondo tentativo dopo 1 secondo per maggiore sicurezza
-        setTimeout(saveAllSettingsImmediate, 1000);
-      }, 100);
-      
-    } catch (error) {
-      console.error("❌ Errore nel salvataggio diretto del flag setupCompleted:", error);
-    }
-  };
-
-  // Backup automatico
-  const createAutoBackup = async () => {
-    try {
-      await createManualBackup();
-      setBackupStatus(prev => ({
-        ...prev,
-        lastBackup: new Date().toISOString()
-      }));
-      console.log("✅ Backup automatico creato");
-    } catch (error) {
-      console.error("❌ Errore backup automatico:", error);
-    }
-  };
-
-  // Verifica integrità dati
-  const verifyDataIntegrityFull = async () => {
-    return await verifyDataIntegrity();
-  };
-
-  // Aggiorna tema
-  const updateThemeColors = (themeId) => {
-    if (THEMES[themeId]) {
-      setActiveTheme(THEMES[themeId]);
-    }
-  };
-
-  // Tema finale
+  // Tema (adesso è dark di default)
   const theme = {
-    primary: activeTheme.primary,
-    secondary: activeTheme.secondary,
-    danger: activeTheme.danger,
-    warning: activeTheme.warning,
-    background: userSettings.darkMode ? activeTheme.darkBackground : activeTheme.background,
-    card: userSettings.darkMode ? activeTheme.darkCard : activeTheme.card,
-    text: userSettings.darkMode ? '#FFFFFF' : '#1A2151',
-    textSecondary: userSettings.darkMode ? '#A0A3BD' : '#757F8C',
-    border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
+    // Colori base
+    primary: '#4C6FFF',
+    secondary: '#2ECC71',
+    danger: '#FF5252',
+    warning: '#FFB74D',
+    
+    // Dark mode (di default)
+    background: '#121218',
+    card: '#1E1F25',
+    text: '#FFFFFF',
+    textSecondary: '#A0A3BD',
+    border: '#2A2B36',
+    
+    // Estensioni per il tema dark moderno
+    cardGradient: 'linear-gradient(145deg, #1a1b21, #21222a)',
+    accent: 'rgba(76, 111, 255, 0.1)',
+    glow: '0 0 15px rgba(76, 111, 255, 0.15)',
+    shadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
+    
+    // Se si desidera passare alla light mode
+    ...(userSettings.darkMode === false && {
+      background: '#F8FAFF',
+      card: '#FFFFFF',
+      text: '#1A2151',
+      textSecondary: '#757F8C',
+      border: '#E3E8F1',
+      cardGradient: 'none',
+      accent: 'rgba(76, 111, 255, 0.05)',
+      glow: 'none',
+      shadow: '0 8px 20px rgba(0, 0, 0, 0.06)'
+    })
   };
 
-  // CARICAMENTO DATI MIGLIORATO
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      console.log("🔄 Caricamento dati...");
-      
-      // MIGLIORATO: Verifiche prima di inizializzare
-      if (!hasLocalStorage) {
-        console.warn("⚠️ localStorage non disponibile, l'app funzionerà solo in sessione");
-      }
-      
-      // AGGIUNTA: Verifica se esiste il flag di backup
-      const setupCompletedBackup = localStorage.getItem('budget-setup-completed');
-      let setupCompleted = setupCompletedBackup === 'true';
-      console.log("🔄 Verifica flag setupCompleted:", setupCompleted ? "TROVATO" : "NON TROVATO");
-      
-      // Inizializza il DB con verifiche aggiuntive
-      const dbInitResult = await initDB();
-      if (!dbInitResult) {
-        console.warn("⚠️ Inizializzazione DB non riuscita, utilizzo fallback in memoria");
-      }
-      
-      // Carica impostazioni
-      const settingsData = await getSettings();
-      if (settingsData && settingsData.length > 0) {
-        const settings = settingsData[0];
-        
-        // MODIFICA: usa il flag di backup se presente
-        const mergedUserSettings = {
-          ...(settings.userSettings || userSettings),
-          // Se il flag di backup è true, sovrascrive il valore recuperato
-          setupCompleted: setupCompleted || (settings.userSettings?.setupCompleted || false)
-        };
-        
-        setUserSettings(mergedUserSettings);
-        setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
-        setLastPaydayDate(settings.lastPaydayDate || '');
-        setNextPaydayDate(settings.nextPaydayDate || '');
-        setSavingsPercentage(ensureNumber(settings.savingsPercentage, 10));
-        setStreak(ensureNumber(settings.streak, 0));
-        setAchievements(settings.achievements || []);
-        setBackupStatus(settings.backupStatus || backupStatus);
-        
-        if (settings.userSettings?.themeId) {
-          updateThemeColors(settings.userSettings.themeId);
-        }
-      } else {
-        console.log("🆕 Nessuna impostazione trovata, utilizzo valori predefiniti");
-        
-        // AGGIUNTA: Anche se non ci sono impostazioni, verifica il flag di backup
-        if (setupCompleted) {
-          console.log("🔄 Nessuna impostazione trovata, ma flag setupCompleted di backup trovato");
-          setUserSettings(prev => ({
-            ...prev,
-            setupCompleted: true
-          }));
-        }
-      }
-      
-      // Carica tutti gli altri dati con gestione errori migliorata
-      try {
-        const [transactionsData, fixedExpensesData, futureExpensesData, savingsData] = await Promise.all([
-          getTransactions(),
-          getFixedExpenses(),
-          getFutureExpenses(),
-          getSavingsHistory()
-        ]);
-        
-        if (transactionsData) {
-          setTransactions(transactionsData.map(t => ({
-            ...t,
-            amount: ensureNumber(t.amount, 0)
-          })));
-        }
-        
-        if (fixedExpensesData) {
-          setFixedExpenses(fixedExpensesData.map(e => ({
-            ...e,
-            amount: ensureNumber(e.amount, 0)
-          })));
-        }
-        
-        if (futureExpensesData) {
-          setFutureExpenses(futureExpensesData.map(e => ({
-            ...e,
-            amount: ensureNumber(e.amount, 0)
-          })));
-        }
-        
-        if (savingsData) {
-          const processedSavings = savingsData.map(entry => ({
-            ...entry,
-            amount: ensureNumber(entry.amount, 0),
-            total: ensureNumber(entry.total, 0)
-          }));
-          setSavingsHistory(processedSavings);
-          
-          if (processedSavings.length > 0) {
-            const lastEntry = processedSavings[processedSavings.length - 1];
-            setTotalSavings(ensureNumber(lastEntry.total, 0));
-          }
-        }
-      } catch (dataError) {
-        console.error('❌ Errore caricamento dati:', dataError);
-        // Continua comunque per consentire l'uso dell'app
-      }
-      
-      console.log("✅ Dati caricati");
-      setIsLoading(false);
-      
-      // Crea un backup automatico appena i dati sono caricati (se in PWA)
-      if (isPWA() && backupStatus.autoBackupEnabled) {
-        setTimeout(createAutoBackup, 2000);
-      }
-    } catch (error) {
-      console.error('❌ Errore caricamento:', error);
-      setIsLoading(false);
-      
-      // Segnala l'errore
-      emitStorageError("Errore di caricamento dati. L'app funzionerà con dati limitati.");
-    }
-  };
-
-  // Carica all'avvio
+  // Inizializza il database
   useEffect(() => {
-    loadData();
+    const initializeDatabase = async () => {
+      try {
+        await Promise.all([
+          import('../services/db').then(module => module.initDB())
+        ]);
+        setDatabaseInitialized(true);
+      } catch (error) {
+        console.error("Errore nell'inizializzazione del database:", error);
+      }
+    };
+
+    initializeDatabase();
   }, []);
 
-  // Salva quando cambiano le impostazioni (RITARDATO per evitare salvataggi troppo frequenti)
+  // Carica i dati dal database dopo l'inizializzazione
   useEffect(() => {
-    if (!isLoading) {
-      // Usa un timer per ritardare il salvataggio di 500ms per evitare troppe scritture
-      const saveTimer = setTimeout(() => {
-        saveAllSettings();
-      }, 500);
-      
-      return () => clearTimeout(saveTimer);
-    }
-  }, [userSettings, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, 
-      streak, achievements, backupStatus, isLoading]);
+    if (!databaseInitialized) return;
 
-  // Aggiorna tema
+    const loadData = async () => {
+      try {
+        // Carica le impostazioni
+        const settingsData = await getSettings();
+        if (settingsData && settingsData.length > 0) {
+          const settings = settingsData[0];
+          if (settings.monthlyIncome) setMonthlyIncome(settings.monthlyIncome);
+          if (settings.lastPaydayDate) setLastPaydayDate(settings.lastPaydayDate);
+          if (settings.nextPaydayDate) setNextPaydayDate(settings.nextPaydayDate);
+          if (settings.savingsPercentage) setSavingsPercentage(settings.savingsPercentage);
+          if (settings.userSettings) setUserSettings(settings.userSettings);
+          if (settings.streak) setStreak(settings.streak);
+          if (settings.achievements) setAchievements(settings.achievements);
+        }
+
+        // Carica le transazioni
+        const transactionsData = await getTransactions();
+        if (transactionsData && transactionsData.length > 0) {
+          setTransactions(transactionsData);
+        }
+
+        // Carica le spese fisse
+        const fixedExpensesData = await getFixedExpenses();
+        if (fixedExpensesData && fixedExpensesData.length > 0) {
+          setFixedExpenses(fixedExpensesData);
+        }
+
+        // Carica le spese future
+        const futureExpensesData = await getFutureExpenses();
+        if (futureExpensesData && futureExpensesData.length > 0) {
+          setFutureExpenses(futureExpensesData);
+        }
+
+        // Carica la cronologia dei risparmi
+        const savingsHistoryData = await getSavingsHistory();
+        if (savingsHistoryData && savingsHistoryData.length > 0) {
+          setSavingsHistory(savingsHistoryData);
+          // Calcola il totale dei risparmi
+          const total = savingsHistoryData.reduce((sum, entry) => sum + parseFloat(entry.amount), 0);
+          setTotalSavings(total);
+        }
+
+        setDataLoaded(true);
+      } catch (error) {
+        console.error("Errore nel caricamento dei dati:", error);
+        setDataLoaded(true); // Imposta comunque come caricato per non bloccare l'app
+      }
+    };
+
+    loadData();
+  }, [databaseInitialized]);
+
+  // Salva le impostazioni quando cambiano
   useEffect(() => {
-    if (!isLoading && userSettings.themeId) {
-      updateThemeColors(userSettings.themeId);
-    }
-  }, [userSettings.themeId, isLoading]);
+    if (!databaseInitialized || !dataLoaded) return;
 
-  // CALCOLI BUDGET
-  const getDaysUntilPayday = () => {
-    if (!nextPaydayDate) return 30;
-    
-    const today = new Date();
-    const payday = new Date(nextPaydayDate);
-    const diffTime = payday - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    return Math.max(1, diffDays);
-  };
+    const saveSettingsData = async () => {
+      try {
+        await saveSettings({
+          id: 'appSettings',
+          monthlyIncome,
+          lastPaydayDate,
+          nextPaydayDate,
+          savingsPercentage,
+          userSettings,
+          streak,
+          achievements
+        });
+      } catch (error) {
+        console.error("Errore nel salvataggio delle impostazioni:", error);
+      }
+    };
 
+    saveSettingsData();
+  }, [databaseInitialized, dataLoaded, monthlyIncome, lastPaydayDate, nextPaydayDate, savingsPercentage, userSettings, streak, achievements]);
+
+  // Calcola il totale giornaliero delle spese future da sottrarre
   const getDailyFutureExpenses = () => {
-    if (!nextPaydayDate) return 0;
-    
     const today = new Date();
-    const payday = new Date(nextPaydayDate);
-    
     return futureExpenses.reduce((total, expense) => {
       const dueDate = new Date(expense.dueDate);
+      const diffTime = dueDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      if (dueDate >= today && dueDate <= payday) {
-        const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-        const dailyAmount = ensureNumber(expense.amount, 0) / Math.max(1, daysUntilDue);
+      if (diffDays > 0) {
+        const dailyAmount = expense.amount / diffDays;
         return total + dailyAmount;
       }
-      
       return total;
     }, 0);
   };
 
+  // FUNZIONI IMPORTANTI
   const calculateDailyBudget = () => {
-    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => 
-      sum + ensureNumber(expense.amount, 0), 0);
-    const savingsAmount = (ensureNumber(monthlyIncome, 0) * ensureNumber(savingsPercentage, 0)) / 100;
-    const daysUntilPayday = getDaysUntilPayday();
-    const totalBudget = ensureNumber(monthlyIncome, 0) - totalFixedExpenses - savingsAmount;
-    const dailyBudget = totalBudget / daysUntilPayday;
-    const dailyFutureExpenses = getDailyFutureExpenses();
+    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const dailyBudget = (monthlyIncome - totalFixedExpenses - savingsAmount) / daysInMonth;
     
-    return Math.max(0, dailyBudget - dailyFutureExpenses);
+    // Sottrai le spese future giornaliere
+    const dailyFutureExpenses = getDailyFutureExpenses();
+    const finalBudget = dailyBudget - dailyFutureExpenses;
+    
+    return finalBudget > 0 ? finalBudget : 0;
   };
 
   const getTodayExpenses = () => {
     const today = new Date().toDateString();
     return transactions
-      .filter(t => new Date(t.date).toDateString() === today && t.type === 'expense')
-      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
+      .filter(transaction => new Date(transaction.date).toDateString() === today && transaction.type === 'expense')
+      .reduce((sum, transaction) => sum + parseFloat(transaction.amount), 0);
   };
 
   const getTodayIncome = () => {
     const today = new Date().toDateString();
     return transactions
-      .filter(t => new Date(t.date).toDateString() === today && t.type === 'income')
-      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
+      .filter(transaction => new Date(transaction.date).toDateString() === today && transaction.type === 'income')
+      .reduce((sum, transaction) => sum + parseFloat(transaction.amount), 0);
   };
 
   const getBudgetSurplus = () => {
@@ -548,336 +260,246 @@ export const AppProvider = ({ children }) => {
     return dailyBudget - todayExpenses + todayIncome;
   };
 
-  // TRANSAZIONI (con salvataggio immediato e migliorato)
-  const addTransaction = async (transaction) => {
-    const newTransaction = {
-      ...transaction,
-      id: Date.now(),
-      amount: ensureNumber(transaction.amount, 0),
-      type: transaction.type || 'expense'
-    };
+  const getMonthlyAvailability = () => {
+    const totalFixedExpenses = fixedExpenses.reduce((sum, expense) => sum + parseFloat(expense.amount), 0);
+    const savingsAmount = (monthlyIncome * savingsPercentage) / 100;
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
     
+    const monthlyExpenses = transactions
+      .filter(t => {
+        const tDate = new Date(t.date);
+        return t.type === 'expense' && 
+               tDate.getMonth() === currentMonth && 
+               tDate.getFullYear() === currentYear;
+      })
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+    return monthlyIncome - totalFixedExpenses - savingsAmount - monthlyExpenses;
+  };
+
+  const getDaysUntilPayday = () => {
+    if (!nextPaydayDate) return null;
+    const today = new Date();
+    const nextPayday = new Date(nextPaydayDate);
+    const diffTime = nextPayday - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  };
+
+  // Metodi per le transazioni aggiornati per usare il database
+  const addTransaction = async (transaction) => {
     try {
-      // Aggiorna lo stato locale immediatamente per UI reattiva
-      setTransactions(prev => [newTransaction, ...prev]);
+      // Assicurati che amount sia un numero
+      const newTransaction = {
+        ...transaction,
+        amount: parseFloat(transaction.amount),
+        type: transaction.type || 'expense'
+      };
+      delete newTransaction.id; // Rimuovi l'ID per generazione automatica
       
-      // Tenta di salvare nel database
-      const result = await dbAddTransaction(newTransaction);
+      const newTransactionId = await dbAddTransaction(newTransaction);
       
-      if (!result) {
-        throw new Error("Errore nel salvare la transazione");
-      }
+      setTransactions(prev => [
+        { ...newTransaction, id: newTransactionId },
+        ...prev
+      ]);
       
-      // Salva tutto lo stato dopo l'aggiunta
-      await saveAllSettingsImmediate();
-      
-      return true;
+      return newTransactionId;
     } catch (error) {
-      console.error('❌ Errore aggiunta transazione:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel salvare la transazione. Ricarica l'app per verificare che sia stata salvata.");
-      
-      // Anche se fallisce il salvataggio, manteniamo la transazione nello stato locale
-      // in modo che l'utente possa vedere il cambiamento e riproveremo a salvare in seguito
-      return false;
+      console.error("Errore nell'aggiunta della transazione:", error);
+      throw error;
     }
   };
 
   const updateTransaction = async (id, updatedData) => {
     try {
-      const current = transactions.find(t => t.id === id);
-      if (!current) return false;
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) throw new Error(`Transazione con id ${id} non trovata`);
       
-      const updated = { 
-        ...current, 
+      const updatedTransaction = { 
+        ...transaction, 
         ...updatedData,
-        amount: ensureNumber(updatedData.amount, current.amount)
+        amount: parseFloat(updatedData.amount || transaction.amount)
       };
       
-      // Aggiorna lo stato locale immediatamente
+      await dbUpdateTransaction(updatedTransaction);
+      
       setTransactions(prev => 
-        prev.map(t => t.id === id ? updated : t)
+        prev.map(t => t.id === id ? updatedTransaction : t)
       );
       
-      // Tenta di salvare nel database
-      const result = await dbUpdateTransaction(updated);
-      
-      if (!result) {
-        throw new Error("Errore nell'aggiornare la transazione");
-      }
-      
-      // Salva tutto lo stato dopo l'aggiornamento
-      await saveAllSettingsImmediate();
-      
-      return true;
+      return id;
     } catch (error) {
-      console.error('❌ Errore aggiornamento transazione:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nell'aggiornare la transazione. Ricarica l'app per verificare che sia stata aggiornata.");
-      
-      return false;
+      console.error("Errore nell'aggiornamento della transazione:", error);
+      throw error;
     }
   };
 
   const deleteTransaction = async (id) => {
     try {
-      // Aggiorna lo stato locale immediatamente
+      await dbDeleteTransaction(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
-      
-      // Tenta di eliminare dal database
-      const result = await dbDeleteTransaction(id);
-      
-      if (!result) {
-        throw new Error("Errore nell'eliminare la transazione");
-      }
-      
-      // Salva tutto lo stato dopo l'eliminazione
-      await saveAllSettingsImmediate();
-      
-      return true;
     } catch (error) {
-      console.error('❌ Errore eliminazione transazione:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nell'eliminare la transazione. Ricarica l'app per verificare che sia stata eliminata.");
-      
-      return false;
+      console.error("Errore nell'eliminazione della transazione:", error);
+      throw error;
     }
   };
 
-  // SPESE FISSE (con salvataggio immediato e migliorato)
+  // Metodi per le spese fisse
   const addFixedExpense = async (expense) => {
-    const newExpense = {
-      ...expense,
-      id: Date.now(),
-      amount: ensureNumber(expense.amount, 0)
-    };
-    
     try {
-      // Aggiorna lo stato locale immediatamente
-      setFixedExpenses(prev => [...prev, newExpense]);
+      const newExpense = {
+        ...expense,
+        amount: parseFloat(expense.amount)
+      };
+      delete newExpense.id; // Rimuovi l'ID per generazione automatica
       
-      // Tenta di salvare nel database
-      const result = await dbAddFixedExpense(newExpense);
+      const newExpenseId = await dbAddFixedExpense(newExpense);
       
-      if (!result) {
-        throw new Error("Errore nel salvare la spesa fissa");
-      }
+      setFixedExpenses(prev => [
+        ...prev,
+        { ...newExpense, id: newExpenseId }
+      ]);
       
-      // Salva tutto lo stato dopo l'aggiunta
-      await saveAllSettingsImmediate();
-      
-      return true;
+      return newExpenseId;
     } catch (error) {
-      console.error('❌ Errore aggiunta spesa fissa:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel salvare la spesa fissa. Ricarica l'app per verificare che sia stata salvata.");
-      
-      return false;
+      console.error("Errore nell'aggiunta della spesa fissa:", error);
+      throw error;
     }
   };
 
   const deleteFixedExpense = async (id) => {
     try {
-      // Aggiorna lo stato locale immediatamente
+      await dbDeleteFixedExpense(id);
       setFixedExpenses(prev => prev.filter(e => e.id !== id));
-      
-      // Tenta di eliminare dal database
-      const result = await dbDeleteFixedExpense(id);
-      
-      if (!result) {
-        throw new Error("Errore nell'eliminare la spesa fissa");
-      }
-      
-      // Salva tutto lo stato dopo l'eliminazione
-      await saveAllSettingsImmediate();
-      
-      return true;
     } catch (error) {
-      console.error('❌ Errore eliminazione spesa fissa:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nell'eliminare la spesa fissa. Ricarica l'app per verificare che sia stata eliminata.");
-      
-      return false;
+      console.error("Errore nell'eliminazione della spesa fissa:", error);
+      throw error;
     }
   };
 
-  // SPESE FUTURE (con salvataggio immediato e migliorato)
+  // Metodi per le spese future
   const addFutureExpense = async (expense) => {
-    const newExpense = {
-      ...expense,
-      id: Date.now(),
-      amount: ensureNumber(expense.amount, 0)
-    };
-    
     try {
-      // Aggiorna lo stato locale immediatamente
-      setFutureExpenses(prev => [...prev, newExpense]);
+      const newExpense = {
+        ...expense,
+        amount: parseFloat(expense.amount),
+        createdAt: new Date().toISOString()
+      };
+      delete newExpense.id; // Rimuovi l'ID per generazione automatica
       
-      // Tenta di salvare nel database
-      const result = await dbAddFutureExpense(newExpense);
+      const newExpenseId = await dbAddFutureExpense(newExpense);
       
-      if (!result) {
-        throw new Error("Errore nel salvare la spesa futura");
-      }
+      setFutureExpenses(prev => [
+        ...prev,
+        { ...newExpense, id: newExpenseId }
+      ]);
       
-      // Salva tutto lo stato dopo l'aggiunta
-      await saveAllSettingsImmediate();
-      
-      return true;
+      return newExpenseId;
     } catch (error) {
-      console.error('❌ Errore aggiunta spesa futura:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel salvare la spesa futura. Ricarica l'app per verificare che sia stata salvata.");
-      
-      return false;
+      console.error("Errore nell'aggiunta della spesa futura:", error);
+      throw error;
     }
   };
 
   const updateFutureExpense = async (id, updatedData) => {
     try {
-      const current = futureExpenses.find(e => e.id === id);
-      if (!current) return false;
+      const expense = futureExpenses.find(e => e.id === id);
+      if (!expense) throw new Error(`Spesa futura con id ${id} non trovata`);
       
-      const updated = { 
-        ...current, 
+      const updatedExpense = { 
+        ...expense, 
         ...updatedData,
-        amount: ensureNumber(updatedData.amount, current.amount)
+        amount: parseFloat(updatedData.amount || expense.amount)
       };
       
-      // Aggiorna lo stato locale immediatamente
+      await dbUpdateFutureExpense(updatedExpense);
+      
       setFutureExpenses(prev => 
-        prev.map(e => e.id === id ? updated : e)
+        prev.map(e => e.id === id ? updatedExpense : e)
       );
       
-      // Tenta di salvare nel database
-      const result = await dbUpdateFutureExpense(updated);
-      
-      if (!result) {
-        throw new Error("Errore nell'aggiornare la spesa futura");
-      }
-      
-      // Salva tutto lo stato dopo l'aggiornamento
-      await saveAllSettingsImmediate();
-      
-      return true;
+      return id;
     } catch (error) {
-      console.error('❌ Errore aggiornamento spesa futura:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nell'aggiornare la spesa futura. Ricarica l'app per verificare che sia stata aggiornata.");
-      
-      return false;
+      console.error("Errore nell'aggiornamento della spesa futura:", error);
+      throw error;
     }
   };
 
   const deleteFutureExpense = async (id) => {
     try {
-      // Aggiorna lo stato locale immediatamente
+      await dbDeleteFutureExpense(id);
       setFutureExpenses(prev => prev.filter(e => e.id !== id));
-      
-      // Tenta di eliminare dal database
-      const result = await dbDeleteFutureExpense(id);
-      
-      if (!result) {
-        throw new Error("Errore nell'eliminare la spesa futura");
-      }
-      
-      // Salva tutto lo stato dopo l'eliminazione
-      await saveAllSettingsImmediate();
-      
-      return true;
     } catch (error) {
-      console.error('❌ Errore eliminazione spesa futura:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nell'eliminare la spesa futura. Ricarica l'app per verificare che sia stata eliminata.");
-      
-      return false;
+      console.error("Errore nell'eliminazione della spesa futura:", error);
+      throw error;
     }
   };
 
-  // RISPARMI (con salvataggio immediato e migliorato)
+  // Funzione per aggiungere ai risparmi
   const addToSavings = async (amount, date = new Date().toISOString()) => {
-    const parsedAmount = ensureNumber(amount, 0);
-    const newTotal = ensureNumber(totalSavings, 0) + parsedAmount;
-    
-    const newEntry = {
-      id: Date.now(),
-      amount: parsedAmount,
-      date,
-      total: newTotal
-    };
-    
     try {
-      // Aggiorna lo stato locale immediatamente
-      setSavingsHistory(prev => [...prev, newEntry]);
-      setTotalSavings(newTotal);
+      const parsedAmount = parseFloat(amount);
+      const newEntry = {
+        amount: parsedAmount,
+        date,
+        total: totalSavings + parsedAmount
+      };
       
-      // Tenta di salvare nel database
-      const result = await dbAddSavingsEntry(newEntry);
+      const newEntryId = await addSavingsEntry(newEntry);
       
-      if (!result) {
-        throw new Error("Errore nel salvare l'aggiunta ai risparmi");
-      }
+      setSavingsHistory(prev => [
+        ...prev,
+        { ...newEntry, id: newEntryId }
+      ]);
       
-      // Salva tutto lo stato dopo l'aggiunta
-      await saveAllSettingsImmediate();
+      setTotalSavings(prev => prev + parsedAmount);
       
-      return true;
+      return newEntryId;
     } catch (error) {
-      console.error('❌ Errore aggiunta risparmio:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel salvare l'aggiunta ai risparmi. Ricarica l'app per verificare che sia stata salvata.");
-      
-      return false;
+      console.error("Errore nell'aggiunta ai risparmi:", error);
+      throw error;
     }
   };
 
+  // Funzione per prelevare dai risparmi
   const withdrawFromSavings = async (amount, date = new Date().toISOString()) => {
-    const parsedAmount = ensureNumber(amount, 0);
-    const newTotal = ensureNumber(totalSavings, 0) - parsedAmount;
-    
-    const newEntry = {
-      id: Date.now(),
-      amount: -parsedAmount,
-      date,
-      total: newTotal
-    };
-    
     try {
-      // Aggiorna lo stato locale immediatamente
-      setSavingsHistory(prev => [...prev, newEntry]);
-      setTotalSavings(newTotal);
+      const parsedAmount = parseFloat(amount);
+      const newEntry = {
+        amount: -parsedAmount,
+        date,
+        total: totalSavings - parsedAmount
+      };
       
-      // Tenta di salvare nel database
-      const result = await dbAddSavingsEntry(newEntry);
+      const newEntryId = await addSavingsEntry(newEntry);
       
-      if (!result) {
-        throw new Error("Errore nel salvare il prelievo dai risparmi");
-      }
+      setSavingsHistory(prev => [
+        ...prev,
+        { ...newEntry, id: newEntryId }
+      ]);
       
-      // Salva tutto lo stato dopo l'aggiunta
-      await saveAllSettingsImmediate();
+      setTotalSavings(prev => prev - parsedAmount);
       
-      return true;
+      return newEntryId;
     } catch (error) {
-      console.error('❌ Errore prelievo risparmio:', error);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel salvare il prelievo dai risparmi. Ricarica l'app per verificare che sia stata salvato.");
-      
-      return false;
+      console.error("Errore nel prelievo dai risparmi:", error);
+      throw error;
     }
   };
 
-  // STATISTICHE
+  // Funzione di pulizia del database (per problemi)
+  const resetDatabase = async () => {
+    try {
+      await clearDatabase();
+      window.location.reload();
+    } catch (error) {
+      console.error("Errore nella pulizia del database:", error);
+    }
+  };
+
+  // Statistiche
   const getMonthlyStats = () => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -890,10 +512,21 @@ export const AppProvider = ({ children }) => {
     const expenses = monthlyTransactions.filter(t => t.type === 'expense');
     const income = monthlyTransactions.filter(t => t.type === 'income');
 
+    const categoryExpenses = {};
+    expenses.forEach(t => {
+      if (!categoryExpenses[t.categoryId]) {
+        categoryExpenses[t.categoryId] = 0;
+      }
+      categoryExpenses[t.categoryId] += parseFloat(t.amount);
+    });
+
     return {
-      totalExpenses: expenses.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0),
-      totalIncome: income.reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0),
-      transactionCount: monthlyTransactions.length
+      totalExpenses: expenses.reduce((sum, t) => sum + parseFloat(t.amount), 0),
+      totalIncome: income.reduce((sum, t) => sum + parseFloat(t.amount), 0),
+      transactionCount: monthlyTransactions.length,
+      averageExpense: expenses.length ? expenses.reduce((sum, t) => sum + parseFloat(t.amount), 0) / expenses.length : 0,
+      categoryBreakdown: categoryExpenses,
+      dailyAverageExpense: expenses.reduce((sum, t) => sum + parseFloat(t.amount), 0) / new Date().getDate()
     };
   };
 
@@ -902,80 +535,37 @@ export const AppProvider = ({ children }) => {
     const thisWeekStart = new Date(today);
     thisWeekStart.setDate(today.getDate() - today.getDay());
 
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    const lastWeekEnd = new Date(lastWeekStart);
+    lastWeekEnd.setDate(lastWeekEnd.getDate() + 6);
+
     const thisWeekExpenses = transactions
       .filter(t => {
         const tDate = new Date(t.date);
         return t.type === 'expense' && tDate >= thisWeekStart;
       })
-      .reduce((sum, t) => sum + ensureNumber(t.amount, 0), 0);
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
 
-    return { thisWeek: thisWeekExpenses };
+    const lastWeekExpenses = transactions
+      .filter(t => {
+        const tDate = new Date(t.date);
+        return t.type === 'expense' && tDate >= lastWeekStart && tDate <= lastWeekEnd;
+      })
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+    return {
+      thisWeek: thisWeekExpenses,
+      lastWeek: lastWeekExpenses,
+      difference: thisWeekExpenses - lastWeekExpenses,
+      percentageChange: lastWeekExpenses ? ((thisWeekExpenses - lastWeekExpenses) / lastWeekExpenses) * 100 : 0
+    };
   };
 
-  // RESET (con migliore gestione errori)
-  const resetApp = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Prima di cancellare, tentiamo un backup finale
-      try {
-        const backup = await createManualBackup();
-        console.log("✅ Backup finale creato prima del reset");
-      } catch (backupError) {
-        console.error("❌ Errore nel creare backup finale:", backupError);
-      }
-      
-      // Cancella il database
-      const clearResult = await clearDatabase();
-      
-      if (!clearResult) {
-        throw new Error("Errore nella cancellazione del database");
-      }
-      
-      // Reset tutti gli stati
-      setCurrentView('dashboard');
-      setMonthlyIncome(0);
-      setLastPaydayDate('');
-      setNextPaydayDate('');
-      setFixedExpenses([]);
-      setSavingsPercentage(10);
-      setTransactions([]);
-      setSavingsHistory([]);
-      setTotalSavings(0);
-      setFutureExpenses([]);
-      setStreak(0);
-      setAchievements([]);
-      setUserSettings({
-        ...userSettings,
-        setupCompleted: false
-      });
-      setBackupStatus({
-        lastBackup: null,
-        autoBackupEnabled: true
-      });
-      
-      setIsLoading(false);
-      console.log("✅ App resettata");
-      
-      // Ricarica l'app dopo un breve ritardo
-      setTimeout(() => window.location.reload(), 500);
-      
-      return true;
-    } catch (error) {
-      console.error('❌ Errore reset:', error);
-      setIsLoading(false);
-      
-      // Notifica l'errore
-      emitStorageError("Errore nel resettare l'app. Ricarica manualmente la pagina.");
-      
-      return false;
-    }
-  };
-
+  // Value del provider con TUTTE le funzioni
   return (
     <AppContext.Provider value={{
       // Stati
-      isLoading,
       currentView, setCurrentView,
       monthlyIncome, setMonthlyIncome,
       lastPaydayDate, setLastPaydayDate,
@@ -988,20 +578,13 @@ export const AppProvider = ({ children }) => {
       categories,
       futureExpenses, setFutureExpenses,
       theme,
-      streak, 
+      streak, setStreak,
       achievements, setAchievements,
       userSettings, setUserSettings,
-      updateThemeColors,
-      activeTheme,
-      completeSetup,
-      saveAllSettings,
-      saveAllSettingsImmediate,
-      backupStatus, setBackupStatus,
-      createAutoBackup,
-      verifyDataIntegrity: verifyDataIntegrityFull,
-      savingState, // NUOVO: esporre lo stato di salvataggio
+      databaseInitialized,
+      dataLoaded,
 
-      // Funzioni principali
+      // FUNZIONI IMPORTANTI
       addTransaction, 
       updateTransaction, 
       deleteTransaction,
@@ -1015,12 +598,13 @@ export const AppProvider = ({ children }) => {
       getTodayIncome,
       getBudgetSurplus,
       getDaysUntilPayday,
+      getMonthlyAvailability,
       getDailyFutureExpenses,
       getMonthlyStats,
       getWeeklyComparison,
       addToSavings,
       withdrawFromSavings,
-      resetApp
+      resetDatabase
     }}>
       {children}
     </AppContext.Provider>
