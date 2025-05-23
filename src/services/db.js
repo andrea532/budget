@@ -1,5 +1,5 @@
 // SISTEMA DATABASE MIGLIORATO - LOCALSTORAGE CON VERIFICA E RECUPERO
-// Versione migliorata con più controlli e backup per setupCompleted
+// Versione robusta con meccanismi di fallback, ridondanza e self-healing
 
 const STORAGE_KEYS = {
   SETTINGS: 'budget-settings',
@@ -7,7 +7,10 @@ const STORAGE_KEYS = {
   FIXED_EXPENSES: 'budget-fixed-expenses',
   FUTURE_EXPENSES: 'budget-future-expenses',
   SAVINGS: 'budget-savings',
-  SETUP_COMPLETED: 'budget-setup-completed' // Nuovo flag di backup diretto
+  SETUP_COMPLETED: 'budget-setup-completed', // Flag di backup diretto
+  SETUP_COMPLETED_TIMESTAMP: 'budget-setup-timestamp', // Nuovo timestamp del setup
+  SETUP_REDUNDANT: 'budget-setup-redundant', // Terzo backup ridondante
+  SETTINGS_CRITICAL: 'budget-settings-critical' // Backup critico delle impostazioni
 };
 
 // Verifica PWA
@@ -67,10 +70,22 @@ const saveData = (key, data) => {
         if (Array.isArray(settingsData) && settingsData.length > 0) {
           const setupCompleted = settingsData[0]?.userSettings?.setupCompleted;
           
-          // Se setupCompleted è true, salva anche il flag di backup
+          // Se setupCompleted è true, salva anche in tutti i punti di backup
           if (setupCompleted === true) {
+            // Flag principale
             localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
-            console.log("✅ Flag di backup setupCompleted aggiornato");
+            
+            // Timestamp di quando è stato completato il setup
+            localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP, Date.now().toString());
+            
+            // Backup ridondante (diverso formato per aumentare robustezza)
+            localStorage.setItem(STORAGE_KEYS.SETUP_REDUNDANT, JSON.stringify({
+              completed: true,
+              timestamp: Date.now(),
+              version: '2.0'
+            }));
+            
+            console.log("✅ Flag setupCompleted salvato in tripla ridondanza");
           }
         }
       } catch (e) {
@@ -112,15 +127,41 @@ const loadData = (key) => {
       const parsed = JSON.parse(data);
       console.log(`✅ Caricato ${key}`);
       
-      // MIGLIORAMENTO: Se sono impostazioni, controlla il flag setupCompleted
+      // MIGLIORAMENTO: Se sono impostazioni, controlla tutti i punti di backup del flag setupCompleted
       if (key === STORAGE_KEYS.SETTINGS) {
         try {
-          const setupCompletedBackup = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
-          if (setupCompletedBackup === 'true' && Array.isArray(parsed) && parsed.length > 0) {
-            // Assicurati che setupCompleted sia impostato correttamente
-            if (parsed[0].userSettings) {
-              parsed[0].userSettings.setupCompleted = true;
-              console.log("✅ Flag setupCompleted ripristinato dal backup");
+          const setupCompletedFlag = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
+          const setupRedundantData = localStorage.getItem(STORAGE_KEYS.SETUP_REDUNDANT);
+          let setupRedundantFlag = false;
+          
+          try {
+            if (setupRedundantData) {
+              const redundantParsed = JSON.parse(setupRedundantData);
+              setupRedundantFlag = redundantParsed.completed === true;
+            }
+          } catch (e) {
+            console.error("❌ Errore nel parsing del backup ridondante:", e);
+          }
+          
+          // Se uno qualsiasi dei backup indica completato, impostiamo il flag come true
+          if (setupCompletedFlag || setupRedundantFlag) {
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              // Assicuriamo che setupCompleted sia impostato correttamente
+              if (!parsed[0].userSettings) {
+                parsed[0].userSettings = { setupCompleted: true };
+              } else {
+                parsed[0].userSettings.setupCompleted = true;
+              }
+              console.log("✅ Flag setupCompleted ripristinato dai backup");
+              
+              // Ripristina anche gli altri punti di backup per sicurezza
+              localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
+              localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP, Date.now().toString());
+              localStorage.setItem(STORAGE_KEYS.SETUP_REDUNDANT, JSON.stringify({
+                completed: true,
+                timestamp: Date.now(),
+                version: '2.0'
+              }));
             }
           }
         } catch (e) {
@@ -149,10 +190,77 @@ const loadData = (key) => {
       }
     }
     
+    // Per le impostazioni, verifica anche il backup critico
+    if (key === STORAGE_KEYS.SETTINGS) {
+      try {
+        const criticalBackup = localStorage.getItem(STORAGE_KEYS.SETTINGS_CRITICAL);
+        if (criticalBackup) {
+          const criticalData = JSON.parse(criticalBackup);
+          console.log("⚠️ Recuperate impostazioni dal backup critico");
+          
+          // Ripristina dal backup critico
+          saveData(key, criticalData);
+          return criticalData;
+        }
+      } catch (criticalError) {
+        console.error("❌ Errore nel recupero del backup critico:", criticalError);
+      }
+    }
+    
     return null;
   } catch (error) {
     console.error(`❌ Errore caricamento ${key}:`, error);
     return null;
+  }
+};
+
+// NUOVA FUNZIONE: Fix rapido per setupCompleted
+export const forceSetupCompleted = (value = true) => {
+  try {
+    // Salva direttamente in tutti i punti di backup
+    localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, value ? 'true' : 'false');
+    localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP, Date.now().toString());
+    localStorage.setItem(STORAGE_KEYS.SETUP_REDUNDANT, JSON.stringify({
+      completed: value,
+      timestamp: Date.now(),
+      version: '2.0'
+    }));
+    
+    // Recupera e aggiorna anche le impostazioni principali
+    const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    if (settings) {
+      try {
+        const parsedSettings = JSON.parse(settings);
+        if (Array.isArray(parsedSettings) && parsedSettings.length > 0) {
+          if (!parsedSettings[0].userSettings) {
+            parsedSettings[0].userSettings = { setupCompleted: value };
+          } else {
+            parsedSettings[0].userSettings.setupCompleted = value;
+          }
+          
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
+          console.log(`✅ Flag setupCompleted forzato a ${value ? 'true' : 'false'} in tutti i punti`);
+          return true;
+        }
+      } catch (e) {
+        console.error("❌ Errore nell'aggiornamento delle impostazioni:", e);
+      }
+    }
+    
+    // Se non abbiamo impostazioni, creiamo un nuovo oggetto
+    const newSettings = [{
+      id: 1,
+      userSettings: { setupCompleted: value },
+      monthlyIncome: 0,
+      savingsPercentage: 10
+    }];
+    
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(newSettings));
+    console.log(`✅ Create nuove impostazioni con setupCompleted=${value}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Errore nel forzare setupCompleted:", error);
+    return false;
   }
 };
 
@@ -174,11 +282,33 @@ export const initDB = async () => {
     console.warn("⚠️ Possibile spazio limitato in localStorage");
   }
   
-  // MIGLIORAMENTO: Verifica se il flag setupCompleted è presente
+  // MIGLIORAMENTO: Verifica se il flag setupCompleted è presente in qualsiasi punto
   try {
-    const setupCompleted = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
-    if (setupCompleted === 'true') {
+    const setupCompleted = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
+    const setupRedundantData = localStorage.getItem(STORAGE_KEYS.SETUP_REDUNDANT);
+    let setupRedundantFlag = false;
+    
+    try {
+      if (setupRedundantData) {
+        const redundantParsed = JSON.parse(setupRedundantData);
+        setupRedundantFlag = redundantParsed.completed === true;
+      }
+    } catch (e) {
+      console.error("❌ Errore nel parsing del backup ridondante:", e);
+    }
+    
+    // Se uno qualsiasi dei backup indica completato, ripristina tutti i punti
+    if (setupCompleted || setupRedundantFlag) {
       console.log("✅ Flag setupCompleted trovato, configurazione già completata");
+      
+      // Ripristina tutti i punti di backup
+      localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
+      localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP, Date.now().toString());
+      localStorage.setItem(STORAGE_KEYS.SETUP_REDUNDANT, JSON.stringify({
+        completed: true,
+        timestamp: Date.now(),
+        version: '2.0'
+      }));
       
       // Verifica anche che sia presente nelle impostazioni principali
       const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -186,21 +316,29 @@ export const initDB = async () => {
         try {
           const parsedSettings = JSON.parse(settings);
           if (Array.isArray(parsedSettings) && parsedSettings.length > 0) {
-            if (!parsedSettings[0].userSettings?.setupCompleted) {
-              // Ripara le impostazioni
-              if (parsedSettings[0].userSettings) {
-                parsedSettings[0].userSettings.setupCompleted = true;
-              } else {
-                parsedSettings[0].userSettings = { setupCompleted: true };
-              }
-              
-              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
-              console.log("✅ Flag setupCompleted sincronizzato nelle impostazioni principali");
+            if (!parsedSettings[0].userSettings) {
+              parsedSettings[0].userSettings = { setupCompleted: true };
+            } else if (!parsedSettings[0].userSettings.setupCompleted) {
+              parsedSettings[0].userSettings.setupCompleted = true;
             }
+            
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
+            console.log("✅ Flag setupCompleted sincronizzato nelle impostazioni principali");
           }
         } catch (e) {
           console.error("❌ Errore nel controllo impostazioni:", e);
         }
+      } else {
+        // Se non ci sono impostazioni, ma il flag è presente, creiamo impostazioni base
+        const newSettings = [{
+          id: 1,
+          userSettings: { setupCompleted: true },
+          monthlyIncome: 0,
+          savingsPercentage: 10
+        }];
+        
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(newSettings));
+        console.log("✅ Create nuove impostazioni con setupCompleted=true");
       }
     }
   } catch (e) {
@@ -210,8 +348,14 @@ export const initDB = async () => {
   // Verifica e ripara dati corrotti
   try {
     Object.values(STORAGE_KEYS).forEach(key => {
+      // Salta i flag di testo come SETUP_COMPLETED
+      if (key === STORAGE_KEYS.SETUP_COMPLETED || 
+          key === STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP) {
+        return;
+      }
+      
       const item = localStorage.getItem(key);
-      if (item && key !== STORAGE_KEYS.SETUP_COMPLETED) { // Salta il flag di testo
+      if (item) { 
         try {
           JSON.parse(item);
         } catch (e) {
@@ -250,24 +394,27 @@ export const initDB = async () => {
 
 // SETTINGS
 export const saveSettings = async (settings) => {
-  // MIGLIORAMENTO: Prima controlla se setupCompleted è true e salva il flag di backup
-  if (settings && Array.isArray(settings) && settings.length > 0) {
-    if (settings[0].userSettings?.setupCompleted === true) {
-      try {
-        localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
-        console.log("✅ Flag setupCompleted salvato come backup diretto");
-      } catch (e) {
-        console.error("❌ Errore nel salvataggio del flag setupCompleted:", e);
-      }
+  // Prima controlla se setupCompleted è true e salva il flag in tutti i backup
+  if (settings && settings.userSettings?.setupCompleted === true) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
+      localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP, Date.now().toString());
+      localStorage.setItem(STORAGE_KEYS.SETUP_REDUNDANT, JSON.stringify({
+        completed: true,
+        timestamp: Date.now(),
+        version: '2.0'
+      }));
+      console.log("✅ Flag setupCompleted salvato in tripla ridondanza");
+    } catch (e) {
+      console.error("❌ Errore nel salvataggio del flag setupCompleted:", e);
     }
   }
   
   const result = saveData(STORAGE_KEYS.SETTINGS, settings);
   
-  // MIGLIORAMENTO: Crea sempre un backup parallelo delle impostazioni (doppia sicurezza)
+  // Crea sempre un backup critico delle impostazioni (doppia sicurezza)
   try {
-    const backupKey = `${STORAGE_KEYS.SETTINGS}_critical_backup`;
-    localStorage.setItem(backupKey, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEYS.SETTINGS_CRITICAL, JSON.stringify(settings));
   } catch (error) {
     console.error('❌ Errore backup critico impostazioni:', error);
   }
@@ -276,28 +423,64 @@ export const saveSettings = async (settings) => {
 };
 
 export const getSettings = async () => {
+  // Prima verifica tutti i backup del flag setupCompleted
+  try {
+    const setupCompletedFlag = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
+    const setupRedundantData = localStorage.getItem(STORAGE_KEYS.SETUP_REDUNDANT);
+    let setupRedundantFlag = false;
+    
+    try {
+      if (setupRedundantData) {
+        const redundantParsed = JSON.parse(setupRedundantData);
+        setupRedundantFlag = redundantParsed.completed === true;
+      }
+    } catch (e) {
+      console.error("❌ Errore nel parsing del backup ridondante:", e);
+    }
+    
+    if (setupCompletedFlag || setupRedundantFlag) {
+      console.log("🔄 Flag setupCompleted trovato nei backup: true");
+    }
+  } catch (e) {
+    console.error("❌ Errore nel controllo dei backup setupCompleted:", e);
+  }
+  
   const data = loadData(STORAGE_KEYS.SETTINGS);
   
-  // MIGLIORAMENTO: Verifica setupCompleted e ripara se necessario
+  // Verifica setupCompleted e ripara se necessario
   try {
-    const setupCompletedBackup = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
-    if (setupCompletedBackup === 'true') {
+    const setupCompletedFlag = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED) === 'true';
+    const setupRedundantData = localStorage.getItem(STORAGE_KEYS.SETUP_REDUNDANT);
+    let setupRedundantFlag = false;
+    
+    try {
+      if (setupRedundantData) {
+        const redundantParsed = JSON.parse(setupRedundantData);
+        setupRedundantFlag = redundantParsed.completed === true;
+      }
+    } catch (e) {
+      console.error("❌ Errore nel parsing del backup ridondante:", e);
+    }
+    
+    // Se uno qualsiasi dei backup indica completato, impostiamo il flag come true
+    if (setupCompletedFlag || setupRedundantFlag) {
       if (data && Array.isArray(data) && data.length > 0) {
-        if (data[0].userSettings && !data[0].userSettings.setupCompleted) {
+        if (!data[0].userSettings) {
+          data[0].userSettings = { setupCompleted: true };
+        } else {
           data[0].userSettings.setupCompleted = true;
-          console.log("✅ Flag setupCompleted ripristinato nelle impostazioni");
         }
+        console.log("✅ Flag setupCompleted ripristinato dai backup");
       }
     }
   } catch (e) {
     console.error("❌ Errore nel controllo setupCompleted:", e);
   }
   
-  // MIGLIORAMENTO: Se fallisce, tenta il recupero dal backup critico
-  if (!data || data.length === 0) {
+  // Se fallisce, tenta il recupero dal backup critico
+  if (!data || !Array.isArray(data) || data.length === 0) {
     try {
-      const backupKey = `${STORAGE_KEYS.SETTINGS}_critical_backup`;
-      const criticalBackup = localStorage.getItem(backupKey);
+      const criticalBackup = localStorage.getItem(STORAGE_KEYS.SETTINGS_CRITICAL);
       if (criticalBackup) {
         const parsedBackup = JSON.parse(criticalBackup);
         console.log('⚠️ Recupero impostazioni dal backup critico');
@@ -316,7 +499,7 @@ export const addTransaction = async (transaction) => {
   const existing = loadData(STORAGE_KEYS.TRANSACTIONS) || [];
   existing.unshift(transaction); // Aggiungi all'inizio
   
-  // MIGLIORAMENTO: Limita il numero di transazioni per evitare di superare i limiti di storage
+  // Limita il numero di transazioni per evitare di superare i limiti di storage
   if (existing.length > 1000) {
     console.warn('⚠️ Troppe transazioni, limitando a 1000');
     existing.length = 1000;
@@ -530,7 +713,8 @@ export const verifyDataIntegrity = async () => {
     Object.values(STORAGE_KEYS).forEach(key => {
       try {
         const data = localStorage.getItem(key);
-        if (data && key !== STORAGE_KEYS.SETUP_COMPLETED) { // Salta il flag di testo
+        if (data && key !== STORAGE_KEYS.SETUP_COMPLETED && 
+            key !== STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP) {
           JSON.parse(data); // Tenta di parsare
         }
       } catch (e) {
@@ -552,55 +736,94 @@ export const verifyDataIntegrity = async () => {
   }
 };
 
-// MIGLIORAMENTO: Verifica spazio disponibile
-export const checkStorageSpace = () => {
-  if (!hasLocalStorage) return { available: false, error: "localStorage non disponibile" };
-  
-  try {
-    // Calcola lo spazio utilizzato (approssimativo)
-    let totalSize = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      const value = localStorage.getItem(key);
-      totalSize += (key.length + value.length) * 2; // Caratteri * 2 bytes
-    }
-    
-    // Tenta di stimare lo spazio disponibile
-    let available = true;
-    let maxSize = 5 * 1024 * 1024; // 5MB (limite comune)
-    
-    // Test per stimare meglio il limite
+// DIAGNOSI E UTILITY
+export const diagnosisTools = {
+  // Restituisce lo stato di tutti i flag e backup setupCompleted
+  checkSetupState: () => {
     try {
-      const testKey = "__space_test__";
-      let testValue = "";
-      const increment = 1024 * 250; // 250KB alla volta
+      const setupFlag = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
+      const setupTimestamp = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED_TIMESTAMP);
+      const setupRedundant = localStorage.getItem(STORAGE_KEYS.SETUP_REDUNDANT);
+      let redundantParsed = null;
       
-      for (let i = 0; i < 20; i++) { // Max 5MB (20 * 250KB)
-        testValue += "a".repeat(increment);
-        localStorage.setItem(testKey, testValue);
+      try {
+        if (setupRedundant) {
+          redundantParsed = JSON.parse(setupRedundant);
+        }
+      } catch (e) {}
+      
+      // Controlla anche nelle impostazioni
+      const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+      let settingsParsed = null;
+      let settingsSetupFlag = false;
+      
+      try {
+        if (settings) {
+          settingsParsed = JSON.parse(settings);
+          if (Array.isArray(settingsParsed) && settingsParsed.length > 0) {
+            settingsSetupFlag = settingsParsed[0]?.userSettings?.setupCompleted === true;
+          }
+        }
+      } catch (e) {}
+      
+      return {
+        setupCompletedFlag: setupFlag === 'true',
+        setupCompletedTimestamp: setupTimestamp ? new Date(parseInt(setupTimestamp)) : null,
+        setupRedundantData: redundantParsed,
+        setupRedundantFlag: redundantParsed?.completed === true,
+        settingsSetupFlag: settingsSetupFlag,
+        allFlags: {
+          primary: setupFlag === 'true',
+          redundant: redundantParsed?.completed === true,
+          settings: settingsSetupFlag
+        },
+        isConsistent: (setupFlag === 'true') === settingsSetupFlag && 
+                      (setupFlag === 'true') === (redundantParsed?.completed === true)
+      };
+    } catch (error) {
+      console.error("❌ Errore diagnosi:", error);
+      return { error: error.message };
+    }
+  },
+  
+  // Ripara tutti i flag setupCompleted e li imposta a true
+  repairSetupFlags: () => {
+    return forceSetupCompleted(true);
+  },
+  
+  // Stampa un report diagnostico completo nel console
+  logStorageReport: () => {
+    try {
+      console.group("📊 Report Storage");
+      
+      // Flag setupCompleted
+      const setupState = diagnosisTools.checkSetupState();
+      console.log("🔄 Stato setupCompleted:", setupState);
+      
+      // Tutti i dati in localStorage
+      console.group("📋 Tutti gli elementi in localStorage");
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const size = localStorage.getItem(key)?.length || 0;
+        console.log(`${key}: ${(size / 1024).toFixed(2)} KB`);
+      }
+      console.groupEnd();
+      
+      // Spazio totale utilizzato
+      let totalSize = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+        totalSize += (key.length + value.length) * 2; // Caratteri * 2 bytes
       }
       
-      localStorage.removeItem(testKey);
-      maxSize = 5 * 1024 * 1024; // Se riesce ad arrivare a 5MB, probabilmente è il limite
-    } catch (e) {
-      // Se fallisce prima, stimiamo quanto spazio c'era
-      const errorSize = e.toString();
-      maxSize = Math.min(maxSize, 2 * 1024 * 1024); // Probabilmente meno di 2MB
+      console.log(`💾 Spazio totale utilizzato: ${(totalSize / 1024).toFixed(2)} KB`);
+      
+      console.groupEnd();
+      return true;
+    } catch (error) {
+      console.error("❌ Errore report:", error);
+      return false;
     }
-    
-    const usedPercentage = (totalSize / maxSize) * 100;
-    available = usedPercentage < 90; // Considera disponibile se sotto il 90%
-    
-    return {
-      available,
-      usedBytes: totalSize,
-      estimatedMaxBytes: maxSize,
-      usedPercentage: usedPercentage,
-      usedMB: (totalSize / (1024 * 1024)).toFixed(2),
-      totalMB: (maxSize / (1024 * 1024)).toFixed(2)
-    };
-  } catch (error) {
-    console.error("❌ Errore verifica spazio:", error);
-    return { available: false, error: error.message };
   }
 };
