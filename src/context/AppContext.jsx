@@ -250,6 +250,53 @@ export const AppProvider = ({ children }) => {
     return await saveAllSettings();
   };
 
+  // SOLUZIONE AL PROBLEMA DEL SETUP: Completa setup migliorato
+  const completeSetup = () => {
+    // Imposta il flag di setup completato
+    setUserSettings(prev => ({
+      ...prev,
+      setupCompleted: true
+    }));
+    
+    // IMPORTANTE: Salvataggio di backup DIRETTO per evitare problemi di persistenza
+    // Questo garantisce che il flag viene salvato immediatamente in localStorage
+    try {
+      // Salva il flag direttamente in localStorage come backup
+      localStorage.setItem('budget-setup-completed', 'true');
+      console.log("✅ Flag setupCompleted salvato direttamente in localStorage");
+      
+      // Salva anche le impostazioni complete immediatamente
+      const settings = {
+        id: 1,
+        userSettings: {
+          ...userSettings,
+          setupCompleted: true
+        },
+        monthlyIncome: ensureNumber(monthlyIncome, 0),
+        lastPaydayDate,
+        nextPaydayDate,
+        savingsPercentage: ensureNumber(savingsPercentage, 10),
+        streak: ensureNumber(streak, 0),
+        achievements,
+        backupStatus
+      };
+      
+      // Salva subito in localStorage (metodo diretto)
+      localStorage.setItem('budget-settings', JSON.stringify([settings]));
+      console.log("✅ Impostazioni complete salvate con setupCompleted=true");
+      
+      // Utilizza anche il metodo normale di salvataggio (con promise)
+      setTimeout(() => {
+        saveAllSettingsImmediate();
+        // Secondo tentativo dopo 1 secondo per maggiore sicurezza
+        setTimeout(saveAllSettingsImmediate, 1000);
+      }, 100);
+      
+    } catch (error) {
+      console.error("❌ Errore nel salvataggio diretto del flag setupCompleted:", error);
+    }
+  };
+
   // Backup automatico
   const createAutoBackup = async () => {
     try {
@@ -289,16 +336,6 @@ export const AppProvider = ({ children }) => {
     border: userSettings.darkMode ? '#3A3B43' : '#E3E8F1',
   };
 
-  // Completamento setup
-  const completeSetup = () => {
-    setUserSettings(prev => ({
-      ...prev,
-      setupCompleted: true
-    }));
-    // Salva immediatamente
-    setTimeout(saveAllSettingsImmediate, 100);
-  };
-
   // CARICAMENTO DATI MIGLIORATO
   const loadData = async () => {
     try {
@@ -309,6 +346,11 @@ export const AppProvider = ({ children }) => {
       if (!hasLocalStorage) {
         console.warn("⚠️ localStorage non disponibile, l'app funzionerà solo in sessione");
       }
+      
+      // AGGIUNTA: Verifica se esiste il flag di backup
+      const setupCompletedBackup = localStorage.getItem('budget-setup-completed');
+      let setupCompleted = setupCompletedBackup === 'true';
+      console.log("🔄 Verifica flag setupCompleted:", setupCompleted ? "TROVATO" : "NON TROVATO");
       
       // Inizializza il DB con verifiche aggiuntive
       const dbInitResult = await initDB();
@@ -321,7 +363,14 @@ export const AppProvider = ({ children }) => {
       if (settingsData && settingsData.length > 0) {
         const settings = settingsData[0];
         
-        setUserSettings(settings.userSettings || userSettings);
+        // MODIFICA: usa il flag di backup se presente
+        const mergedUserSettings = {
+          ...(settings.userSettings || userSettings),
+          // Se il flag di backup è true, sovrascrive il valore recuperato
+          setupCompleted: setupCompleted || (settings.userSettings?.setupCompleted || false)
+        };
+        
+        setUserSettings(mergedUserSettings);
         setMonthlyIncome(ensureNumber(settings.monthlyIncome, 0));
         setLastPaydayDate(settings.lastPaydayDate || '');
         setNextPaydayDate(settings.nextPaydayDate || '');
@@ -335,6 +384,15 @@ export const AppProvider = ({ children }) => {
         }
       } else {
         console.log("🆕 Nessuna impostazione trovata, utilizzo valori predefiniti");
+        
+        // AGGIUNTA: Anche se non ci sono impostazioni, verifica il flag di backup
+        if (setupCompleted) {
+          console.log("🔄 Nessuna impostazione trovata, ma flag setupCompleted di backup trovato");
+          setUserSettings(prev => ({
+            ...prev,
+            setupCompleted: true
+          }));
+        }
       }
       
       // Carica tutti gli altri dati con gestione errori migliorata
