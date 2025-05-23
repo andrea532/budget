@@ -1,12 +1,13 @@
 // SISTEMA DATABASE MIGLIORATO - LOCALSTORAGE CON VERIFICA E RECUPERO
-// Versione migliorata con più controlli e feedback
+// Versione migliorata con più controlli e backup per setupCompleted
 
 const STORAGE_KEYS = {
   SETTINGS: 'budget-settings',
   TRANSACTIONS: 'budget-transactions', 
   FIXED_EXPENSES: 'budget-fixed-expenses',
   FUTURE_EXPENSES: 'budget-future-expenses',
-  SAVINGS: 'budget-savings'
+  SAVINGS: 'budget-savings',
+  SETUP_COMPLETED: 'budget-setup-completed' // Nuovo flag di backup diretto
 };
 
 // Verifica PWA
@@ -58,6 +59,25 @@ const saveData = (key, data) => {
     }
     
     console.log(`✅ Salvato ${key} (${stringData.length} bytes)`);
+    
+    // MIGLIORAMENTO: Se sto salvando impostazioni, controllo setupCompleted
+    if (key === STORAGE_KEYS.SETTINGS) {
+      try {
+        const settingsData = JSON.parse(savedData);
+        if (Array.isArray(settingsData) && settingsData.length > 0) {
+          const setupCompleted = settingsData[0]?.userSettings?.setupCompleted;
+          
+          // Se setupCompleted è true, salva anche il flag di backup
+          if (setupCompleted === true) {
+            localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
+            console.log("✅ Flag di backup setupCompleted aggiornato");
+          }
+        }
+      } catch (e) {
+        console.error("❌ Errore nel controllo setupCompleted:", e);
+      }
+    }
+    
     return true;
   } catch (error) {
     console.error(`❌ Errore salvataggio ${key}:`, error);
@@ -91,6 +111,23 @@ const loadData = (key) => {
     if (data) {
       const parsed = JSON.parse(data);
       console.log(`✅ Caricato ${key}`);
+      
+      // MIGLIORAMENTO: Se sono impostazioni, controlla il flag setupCompleted
+      if (key === STORAGE_KEYS.SETTINGS) {
+        try {
+          const setupCompletedBackup = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
+          if (setupCompletedBackup === 'true' && Array.isArray(parsed) && parsed.length > 0) {
+            // Assicurati che setupCompleted sia impostato correttamente
+            if (parsed[0].userSettings) {
+              parsed[0].userSettings.setupCompleted = true;
+              console.log("✅ Flag setupCompleted ripristinato dal backup");
+            }
+          }
+        } catch (e) {
+          console.error("❌ Errore nel controllo setupCompleted:", e);
+        }
+      }
+      
       return parsed;
     }
     
@@ -137,11 +174,44 @@ export const initDB = async () => {
     console.warn("⚠️ Possibile spazio limitato in localStorage");
   }
   
+  // MIGLIORAMENTO: Verifica se il flag setupCompleted è presente
+  try {
+    const setupCompleted = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
+    if (setupCompleted === 'true') {
+      console.log("✅ Flag setupCompleted trovato, configurazione già completata");
+      
+      // Verifica anche che sia presente nelle impostazioni principali
+      const settings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+      if (settings) {
+        try {
+          const parsedSettings = JSON.parse(settings);
+          if (Array.isArray(parsedSettings) && parsedSettings.length > 0) {
+            if (!parsedSettings[0].userSettings?.setupCompleted) {
+              // Ripara le impostazioni
+              if (parsedSettings[0].userSettings) {
+                parsedSettings[0].userSettings.setupCompleted = true;
+              } else {
+                parsedSettings[0].userSettings = { setupCompleted: true };
+              }
+              
+              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsedSettings));
+              console.log("✅ Flag setupCompleted sincronizzato nelle impostazioni principali");
+            }
+          }
+        } catch (e) {
+          console.error("❌ Errore nel controllo impostazioni:", e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("❌ Errore nel controllo setupCompleted:", e);
+  }
+  
   // Verifica e ripara dati corrotti
   try {
     Object.values(STORAGE_KEYS).forEach(key => {
       const item = localStorage.getItem(key);
-      if (item) {
+      if (item && key !== STORAGE_KEYS.SETUP_COMPLETED) { // Salta il flag di testo
         try {
           JSON.parse(item);
         } catch (e) {
@@ -180,12 +250,24 @@ export const initDB = async () => {
 
 // SETTINGS
 export const saveSettings = async (settings) => {
-  const result = saveData(STORAGE_KEYS.SETTINGS, [settings]);
+  // MIGLIORAMENTO: Prima controlla se setupCompleted è true e salva il flag di backup
+  if (settings && Array.isArray(settings) && settings.length > 0) {
+    if (settings[0].userSettings?.setupCompleted === true) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.SETUP_COMPLETED, 'true');
+        console.log("✅ Flag setupCompleted salvato come backup diretto");
+      } catch (e) {
+        console.error("❌ Errore nel salvataggio del flag setupCompleted:", e);
+      }
+    }
+  }
+  
+  const result = saveData(STORAGE_KEYS.SETTINGS, settings);
   
   // MIGLIORAMENTO: Crea sempre un backup parallelo delle impostazioni (doppia sicurezza)
   try {
     const backupKey = `${STORAGE_KEYS.SETTINGS}_critical_backup`;
-    localStorage.setItem(backupKey, JSON.stringify([settings]));
+    localStorage.setItem(backupKey, JSON.stringify(settings));
   } catch (error) {
     console.error('❌ Errore backup critico impostazioni:', error);
   }
@@ -195,6 +277,21 @@ export const saveSettings = async (settings) => {
 
 export const getSettings = async () => {
   const data = loadData(STORAGE_KEYS.SETTINGS);
+  
+  // MIGLIORAMENTO: Verifica setupCompleted e ripara se necessario
+  try {
+    const setupCompletedBackup = localStorage.getItem(STORAGE_KEYS.SETUP_COMPLETED);
+    if (setupCompletedBackup === 'true') {
+      if (data && Array.isArray(data) && data.length > 0) {
+        if (data[0].userSettings && !data[0].userSettings.setupCompleted) {
+          data[0].userSettings.setupCompleted = true;
+          console.log("✅ Flag setupCompleted ripristinato nelle impostazioni");
+        }
+      }
+    }
+  } catch (e) {
+    console.error("❌ Errore nel controllo setupCompleted:", e);
+  }
   
   // MIGLIORAMENTO: Se fallisce, tenta il recupero dal backup critico
   if (!data || data.length === 0) {
@@ -433,7 +530,7 @@ export const verifyDataIntegrity = async () => {
     Object.values(STORAGE_KEYS).forEach(key => {
       try {
         const data = localStorage.getItem(key);
-        if (data) {
+        if (data && key !== STORAGE_KEYS.SETUP_COMPLETED) { // Salta il flag di testo
           JSON.parse(data); // Tenta di parsare
         }
       } catch (e) {
